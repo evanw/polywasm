@@ -1,0 +1,19 @@
+{
+  "name": "polywasm",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./index.js",
+  "license": "MIT",
+  "homepage": "https://github.com/evanw/polywasm",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evanw/polywasm.git"
+  },
+  "scripts": {
+    "build": "esbuild --bundle src/index.ts --outfile=index.js --format=esm \"--mangle-props=_$\" && esbuild --bundle src/index.ts --outfile=index.min.js --format=esm \"--mangle-props=_$\" --minify",
+    "test": "node test/run.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.17.19"
+  }
+}

@@ -1,0 +1,45 @@
+diff --git a/interpreter/script/js.ml b/interpreter/script/js.ml
+index eef31ee5..a16c0ad9 100644
+--- a/interpreter/script/js.ml
++++ b/interpreter/script/js.ml
+@@ -277,7 +277,7 @@ let wrap module_name item_name wrap_action wrap_assertion at =
+ 
+ let is_js_value_type = function
+   | I32Type -> true
+-  | I64Type | F32Type | F64Type -> false
++  | I64Type | F32Type | F64Type -> true
+ 
+ let is_js_global_type = function
+   | GlobalType (t, mut) -> is_js_value_type t && mut = Immutable
+@@ -313,6 +313,7 @@ let of_bytes = of_string_with String.iter add_hex_char
+ let of_string = of_string_with String.iter add_char
+ let of_name = of_string_with List.iter add_unicode_char
+ 
++(*
+ let of_float z =
+   match string_of_float z with
+   | "nan" -> "NaN"
+@@ -320,17 +321,18 @@ let of_float z =
+   | "inf" -> "Infinity"
+   | "-inf" -> "-Infinity"
+   | s -> s
++*)
+ 
+ let of_literal lit =
+   match lit.it with
+   | Values.I32 i -> I32.to_string_s i
+-  | Values.I64 i -> "int64(\"" ^ I64.to_string_s i ^ "\")"
+-  | Values.F32 z -> of_float (F32.to_float z)
+-  | Values.F64 z -> of_float (F64.to_float z)
++  | Values.I64 i -> I64.to_string_s i ^ "n"
++  | Values.F32 z -> "float32(" ^ I32.to_string_s (F32.to_bits z) ^ ")"
++  | Values.F64 z -> "float64(" ^ I64.to_string_s (F64.to_bits z) ^ "n)"
+ 
+ let of_nan = function
+-  | CanonicalNan -> "nan:canonical"
+-  | ArithmeticNan -> "nan:arithmetic"
++  | CanonicalNan -> "NaN"
++  | ArithmeticNan -> "NaN"
+ 
+ let of_result res =
+   match res.it with
