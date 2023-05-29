@@ -521,16 +521,17 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
             if (Enable.Stats) code += `${recordStatsVar}(${JSON.stringify(buildStatName!(match))});`
             const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${astVar}[${rootPtrVar}]&${~0 << Pack.OutSlotShift}`)
 
-            // If we know how to optimize the resulting node, then return the
-            // 2's complement of the node pointer to tell the caller to run the
-            // optimizer again. This will cause a loop that will continue to
-            // optimize the node until no further optimizations are made. We
-            // don't call the current function ourselves as we don't have a
-            // reference to it (since we're using "new Function" to make it).
+            // If we know how to optimize the resulting node, then continue to
+            // optimize the node until no further optimizations are made.
             const optimizeAgain = typeof replace !== 'string' && (typeof replace[0] === 'string'
               ? oneOfOps[replace[0]]!.canBeOptimized_
               : opCanBeOptimized.has(replace[0]))
-            code += 'return' + (optimizeAgain ? '~' : ' ') + replacePtr
+            if (optimizeAgain) {
+              if (rootPtrVar !== replacePtr) code += `${rootPtrVar}=${replacePtr};`
+              code += 'continue'
+            } else {
+              code += 'return ' + replacePtr
+            }
           }
         })
       })
@@ -670,10 +671,9 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
       for (const op of oneOf) opCanBeOptimized.add(op)
     }
   }
-  let code = ''
-  code += `var ${rootOpVar}=${astVar}[${rootPtrVar}]&${Pack.OpMask};`
+  let code = `for(;;){var ${rootOpVar}=${astVar}[${rootPtrVar}]&${Pack.OpMask};`
   compileRules(rootPtrVar, rootOpVar, rules, Enable.Stats ? matchToStatName : null, [], {})
-  code += 'return ' + rootPtrVar
+  code += `return ${rootPtrVar}}`
   return Enable.Stats
     ? new Function(recordStatsVar, `return(${astVar},${constantsVar},${allocateNode},${rootPtrVar})=>{${code}}`)(recordStats)
     : new Function(astVar, constantsVar, allocateNode, rootPtrVar, code)
@@ -688,7 +688,8 @@ const matchToStatName = ([pattern, ...operands]: Match): string => {
     text += Op[pattern]
   } else {
     const [, ...oneOf] = pattern
-    text += oneOf.map(op => Op[op]).join('|')
+    const parts = oneOf.map(op => Op[op])
+    text += (parts.length > 4 ? parts.slice(0, 4).concat('...') : parts).join('|')
   }
   for (const operand of operands) text += ', ' + (typeof operand === 'string' ? operand : matchToStatName(operand))
   return text + ']'
@@ -705,6 +706,9 @@ const recordStats = (statName: string): void => {
   stats[statName] = (stats[statName] || 0) + 1
   if (!statsTimeout) statsTimeout = setTimeout(() => {
     statsTimeout = 0
-    console.log('stats:' + Object.keys(stats!).sort().map(x => `\n${x}: ${stats![x]}`).join(''))
+    console.log('stats:' + Object.entries(stats!)
+      .sort((a, b) => b[1] - a[1] || +(a[0] > b[0]) - +(a[0] < b[0]))
+      .map(([a, b]) => `\n${a}: ${b}`)
+      .join(''))
   })
 }
