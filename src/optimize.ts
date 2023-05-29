@@ -115,15 +115,17 @@ type OpWithoutPayload =
 // included in the AST node's child count (which allows for generic traversal).
 type Expr = 'x' | 'y' | 'z'
 type Payload = 'P' | 'Q'
+type OneOfWithoutPayload = '@'
+type OneOfWithPayload = '$'
 
 type Match =
-  | [OpWithoutPayload | OpWithoutPayload[], ...(Match | Expr)[]]
-  | [OpWithPayload | OpWithPayload[], ...(Match | Expr)[], Payload]
+  | [OpWithoutPayload | [OneOfWithoutPayload, ...OpWithoutPayload[]], ...(Match | Expr)[]]
+  | [OpWithPayload | [OneOfWithPayload, ...OpWithPayload[]], ...(Match | Expr)[], Payload]
 
 type Replace =
   | Expr
-  | [OpWithoutPayload, ...Replace[]]
-  | [OpWithPayload, ...Replace[], ReplacePayload]
+  | [OpWithoutPayload | OneOfWithoutPayload, ...Replace[]]
+  | [OpWithPayload | OneOfWithPayload, ...Replace[], ReplacePayload]
 
 const enum Edit {
   i64_to_i32 = -1,
@@ -152,98 +154,31 @@ interface Rule {
 const rules: Rule[] = [
   // load of (addr + constant) => merge constant into load's offset
   {
-    match_: [Op.i32_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i32_load, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.f32_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.f32_load, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.f64_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.f64_load, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_load8_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i32_load8_s, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_load8_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i32_load8_u, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_load16_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i32_load16_s, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_load16_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i32_load16_u, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load8_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load8_s, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load8_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load8_u, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load16_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load16_s, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load16_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load16_u, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load32_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load32_s, 'x', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_load32_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
-    replace_: [Op.i64_load32_u, 'x', [Edit.i32_add, 'P', 'Q']],
+    match_: [
+      ['$',
+        Op.i32_load, Op.i64_load, Op.f32_load, Op.f64_load,
+        Op.i32_load8_s, Op.i32_load8_u, Op.i32_load16_s, Op.i32_load16_u,
+        Op.i64_load8_s, Op.i64_load8_u, Op.i64_load16_s, Op.i64_load16_u, Op.i64_load32_s, Op.i64_load32_u,
+      ],
+      [Op.i32_add, 'x', [Op.i32_const, 'Q']],
+      'P',
+    ],
+    replace_: ['$', 'x', [Edit.i32_add, 'P', 'Q']],
   },
 
   // store of (addr + constant) => merge constant into store's offset
   {
-    match_: [Op.i32_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i32_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i64_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.f32_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.f32_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.f64_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.f64_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_store8, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i32_store8, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i32_store16, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i32_store16, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_store8, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i64_store8, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_store16, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i64_store16, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
-  },
-  {
-    match_: [Op.i64_store32, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
-    replace_: [Op.i64_store32, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+    match_: [
+      ['$',
+        Op.i32_store, Op.i64_store, Op.f32_store, Op.f64_store,
+        Op.i32_store8, Op.i32_store16,
+        Op.i64_store8, Op.i64_store16, Op.i64_store32,
+      ],
+      [Op.i32_add, 'x', [Op.i32_const, 'Q']],
+      'y',
+      'P',
+    ],
+    replace_: ['$', 'x', 'y', [Edit.i32_add, 'P', 'Q']],
   },
 
   // i64_store8 => i32_store8
@@ -256,11 +191,20 @@ const rules: Rule[] = [
           replace_: [Op.i32_store8, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P'],
         },
         {
-          match_: [[Op.i64_load8_s, Op.i64_load8_u, Op.i64_load16_s, Op.i64_load16_u, Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'z', 'Q'],
+          match_: [
+            ['$',
+              Op.i64_load8_s, Op.i64_load8_u,
+              Op.i64_load16_s, Op.i64_load16_u,
+              Op.i64_load32_s, Op.i64_load32_u,
+              Op.i64_load,
+            ],
+            'z',
+            'Q',
+          ],
           replace_: [Op.i32_store8, 'x', [Op.i32_load8_u, 'z', 'Q'], 'P'],
         },
         {
-          match_: [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
+          match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
           replace_: [Op.i32_store8, 'x', 'z', 'P'],
         },
       ],
@@ -285,11 +229,19 @@ const rules: Rule[] = [
           replace_: [Op.i32_store16, 'x', [Op.i32_load8_u, 'z', 'Q'], 'P'],
         },
         {
-          match_: [[Op.i64_load16_s, Op.i64_load16_u, Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'z', 'Q'],
+          match_: [
+            ['$',
+              Op.i64_load16_s, Op.i64_load16_u,
+              Op.i64_load32_s, Op.i64_load32_u,
+              Op.i64_load,
+            ],
+            'z',
+            'Q',
+          ],
           replace_: [Op.i32_store16, 'x', [Op.i32_load16_u, 'z', 'Q'], 'P'],
         },
         {
-          match_: [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
+          match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
           replace_: [Op.i32_store16, 'x', 'z', 'P'],
         },
       ],
@@ -322,11 +274,18 @@ const rules: Rule[] = [
           replace_: [Op.i32_store, 'x', [Op.i32_load16_u, 'z', 'Q'], 'P'],
         },
         {
-          match_: [[Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'z', 'Q'],
+          match_: [
+            ['$',
+              Op.i64_load32_s, Op.i64_load32_u,
+              Op.i64_load,
+            ],
+            'z',
+            'Q',
+          ],
           replace_: [Op.i32_store, 'x', [Op.i32_load, 'z', 'Q'], 'P'],
         },
         {
-          match_: [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
+          match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
           replace_: [Op.i32_store, 'x', 'z', 'P'],
         },
       ],
@@ -339,19 +298,19 @@ const rules: Rule[] = [
     nested_: {
       'x': [
         {
-          match_: [[Op.i64_load8_s, Op.i64_load8_u], 'y', 'P'],
+          match_: [['$', Op.i64_load8_s, Op.i64_load8_u], 'y', 'P'],
           replace_: [Op.i32_eqz, [Op.i32_load8_u, 'y', 'P']],
         },
         {
-          match_: [[Op.i64_load16_s, Op.i64_load16_u], 'y', 'P'],
+          match_: [['$', Op.i64_load16_s, Op.i64_load16_u], 'y', 'P'],
           replace_: [Op.i32_eqz, [Op.i32_load16_u, 'y', 'P']],
         },
         {
-          match_: [[Op.i64_load32_s, Op.i64_load32_u], 'y', 'P'],
+          match_: [['$', Op.i64_load32_s, Op.i64_load32_u], 'y', 'P'],
           replace_: [Op.i32_eqz, [Op.i32_load, 'y', 'P']],
         },
         {
-          match_: [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
+          match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
           replace_: [Op.i32_eqz, 'y'],
         },
       ],
@@ -384,15 +343,15 @@ const rules: Rule[] = [
           replace_: [Op.i32_load16_u, 'y', 'P'],
         },
         {
-          match_: [[Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'y', 'P'],
+          match_: [['$', Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'y', 'P'],
           replace_: [Op.i32_load, 'y', 'P'],
         },
         {
-          match_: [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
+          match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
           replace_: 'y',
         },
         {
-          match_: [Op.i64_add, [[Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'], [Op.i64_const, 'P']],
+          match_: [Op.i64_add, [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'], [Op.i64_const, 'P']],
           replace_: [Op.i32_add, 'y', [Op.i32_const, [Edit.i64_to_i32, 'P']]],
         },
       ],
@@ -452,26 +411,28 @@ const rules: Rule[] = [
 // is the 2's complement of the number and the optimization function should be
 // called again. Optimizations are iterated until a fixed point is reached.
 export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], allocateNode: (node: number, length: number) => number, ptr: number) => number => {
+  type PlaceholderMap = Partial<Record<Expr | Payload, string>>
+
   interface ReusableNode {
-    ptr_: string
+    ptrVar_: string
     operands_: (Expr | Payload | null)[]
   }
 
   let nextVar = 0
   const newVarName = () => 'v' + nextVar++
 
-  const compileOperand = (ptr: string, index: number, operands: (Match | Expr | Payload)[], reusableNodes: ReusableNode[], then: (reusableNodes: ReusableNode[]) => void): void => {
+  const compileOperand = (ptrVar: string, index: number, operands: (Match | Expr | Payload)[], reusableNodes: ReusableNode[], then: (reusableNodes: ReusableNode[]) => void): void => {
     if (index < operands.length) {
       const operand = operands[index]
       if (typeof operand === 'string') {
-        placeholderExprs[operand] = `${ast}[${ptr}+${index + 1}]`
-        compileOperand(ptr, index + 1, operands, reusableNodes, then)
+        placeholderExprs[operand] = `${astVar}[${ptrVar}+${index + 1}]`
+        compileOperand(ptrVar, index + 1, operands, reusableNodes, then)
       } else {
         const childPtr = newVarName()
         const childOp = newVarName()
-        code += `var ${childPtr}=${ast}[${ptr}+${index + 1}],${childOp}=${ast}[${childPtr}]&${Pack.OpMask};`
+        code += `var ${childPtr}=${astVar}[${ptrVar}+${index + 1}],${childOp}=${astVar}[${childPtr}]&${Pack.OpMask};`
         compileMatch(childPtr, childOp, operand, reusableNodes, reusableNodes => {
-          compileOperand(ptr, index + 1, operands, reusableNodes, then)
+          compileOperand(ptrVar, index + 1, operands, reusableNodes, then)
         })
       }
     } else {
@@ -479,38 +440,56 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
     }
   }
 
-  const compileMatch = (ptr: string, op: string, [pattern, ...operands]: Match, reusableNodes: ReusableNode[], then: (reusableNodes: ReusableNode[]) => void): void => {
-    const sorted = (typeof pattern === 'number' ? [pattern] : pattern).sort((a, b) => a - b)
+  const compileMatch = (ptrVar: string, opVar: string, [pattern, ...operands]: Match, reusableNodes: ReusableNode[], then: (reusableNodes: ReusableNode[]) => void): void => {
     const parts: string[] = []
 
-    // Collapse runs of nodes into range expressions
-    for (let i = 0; i < sorted.length; i++) {
-      let run = 1
-      while (i + run < sorted.length && sorted[i + run - 1] + 1 === sorted[i + run]) run++
-      parts.push(run > 2 ? `${op}>=${sorted[i]}&&${op}<=${sorted[i += run - 1]}` : `${op}===${sorted[i]}`)
+    // Match with a single opcode
+    if (typeof pattern === 'number') {
+      parts.push(`${opVar}===${pattern}`)
+    }
+
+    // Match with one of a set of opcodes
+    else {
+      const [name, ...oneOf] = pattern
+      oneOf.sort((a, b) => a - b)
+
+      // Remember this opcode match in case the replacement references it
+      oneOfOps[name] = {
+        ptrVar_: ptrVar,
+        opVar_: opVar,
+        canBeOptimized_: oneOf.some(x => opCanBeOptimized.has(x)),
+      }
+
+      // Collapse runs of nodes into range expressions
+      for (let i = 0; i < oneOf.length; i++) {
+        let run = 1
+        while (i + run < oneOf.length && oneOf[i + run - 1] + 1 === oneOf[i + run]) run++
+        parts.push(run > 2 ? `${opVar}>=${oneOf[i]}&&${opVar}<=${oneOf[i += run - 1]}` : `${opVar}===${oneOf[i]}`)
+      }
     }
 
     // Remember this node so we can possibly reuse it later
     reusableNodes = reusableNodes.concat({
-      ptr_: ptr,
+      ptrVar_: ptrVar,
       operands_: operands.map(x => typeof x === 'string' ? x : null),
     })
 
     code += `if(${parts.join('||')}){`
-    compileOperand(ptr, 0, operands, reusableNodes, then)
+    compileOperand(ptrVar, 0, operands, reusableNodes, then)
     code += '}'
   }
 
-  const compileRules = (ptr: string,
-    op: string,
+  const compileRules = (
+    ptrVar: string,
+    opVar: string,
     rules: Rule[],
     buildStatName: ((match: Match) => string) | null,
     reusableNodes: ReusableNode[],
-    placeholderVarsFromParent: Partial<Record<Expr | Payload, string>>,
+    placeholderVarsFromParent: PlaceholderMap,
   ): void => {
     for (const { match_: match, nested_: nested, replace_: replace, onlyIf_: onlyIf } of rules) {
-      compileMatch(ptr, op, match, reusableNodes, reusableNodes => {
-        const placeholderVars: Partial<Record<Expr | Payload, string>> = Object.create(placeholderVarsFromParent)
+      compileMatch(ptrVar, opVar, match, reusableNodes, reusableNodes => {
+        const placeholderVars: PlaceholderMap = Object.create(placeholderVarsFromParent)
 
         compileOnlyIf(onlyIf, placeholderVars, () => {
           // Handle nested rules
@@ -520,12 +499,12 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
               storePlaceholderExprToVar(operand as Expr, placeholderVars)
             }
             for (const operand in nested) {
-              const childPtr = placeholderVars[operand as Expr]!
-              const childOp = newVarName()
-              code += `var ${childOp}=${ast}[${childPtr}]&${Pack.OpMask};`
+              const childPtrVar = placeholderVars[operand as Expr]!
+              const childOpVar = newVarName()
+              code += `var ${childOpVar}=${astVar}[${childPtrVar}]&${Pack.OpMask};`
               compileRules(
-                childPtr,
-                childOp,
+                childPtrVar,
+                childOpVar,
                 nested[operand as Expr]!,
                 Enable.Stats ? subMatch => buildStatName!(substituteMatch(match, operand as Expr, subMatch)) : null,
                 reusableNodes,
@@ -539,8 +518,8 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
             // Make sure to preserve the output stack slot of the root node in
             // case this expression isn't inlined and we need to emit an
             // assignment to that stack slot.
-            if (Enable.Stats) code += `${recordStatsFn}(${JSON.stringify(buildStatName!(match))});`
-            const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${ast}[${rootPtr}]&${~0 << Pack.OutSlotShift}`)
+            if (Enable.Stats) code += `${recordStatsVar}(${JSON.stringify(buildStatName!(match))});`
+            const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${astVar}[${rootPtrVar}]&${~0 << Pack.OutSlotShift}`)
 
             // If we know how to optimize the resulting node, then return the
             // 2's complement of the node pointer to tell the caller to run the
@@ -548,17 +527,20 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
             // optimize the node until no further optimizations are made. We
             // don't call the current function ourselves as we don't have a
             // reference to it (since we're using "new Function" to make it).
-            code += 'return' + (typeof replace !== 'string' && opCanBeOptimized.has(replace[0]) ? '~' : ' ') + replacePtr
+            const optimizeAgain = typeof replace !== 'string' && (typeof replace[0] === 'string'
+              ? oneOfOps[replace[0]]!.canBeOptimized_
+              : opCanBeOptimized.has(replace[0]))
+            code += 'return' + (optimizeAgain ? '~' : ' ') + replacePtr
           }
         })
       })
     }
   }
 
-  const compileOnlyIf = (onlyIf: Check | undefined, placeholderVars: Partial<Record<Expr | Payload, string>>, then: () => void): void => {
+  const compileOnlyIf = (onlyIf: Check | undefined, placeholderVars: PlaceholderMap, then: () => void): void => {
     if (onlyIf) {
       const compileCheck = (onlyIf: Check): string => {
-        if (typeof onlyIf === 'string') return `${constants}[${placeholderVars[onlyIf] || placeholderExprs[onlyIf]}]`
+        if (typeof onlyIf === 'string') return `${constantsVar}[${placeholderVars[onlyIf] || placeholderExprs[onlyIf]}]`
         if (typeof onlyIf === 'bigint') return onlyIf + 'n'
         return `(${compileCheck(onlyIf[0])})${onlyIf[1]}(${compileCheck(onlyIf[2])})`
       }
@@ -570,7 +552,7 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
     }
   }
 
-  const storePlaceholderExprToVar = (operand: Expr | Payload, placeholderVars: Partial<Record<Expr | Payload, string>>): void => {
+  const storePlaceholderExprToVar = (operand: Expr | Payload, placeholderVars: PlaceholderMap): void => {
     if (!(operand in placeholderVars)) {
       const childPtr = newVarName()
       code += `var ${childPtr}=${placeholderExprs[operand]};`
@@ -578,12 +560,12 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
     }
   }
 
-  const constructReplacement = (replace: Replace | ReplacePayload, placeholderVars: Partial<Record<Expr | Payload, string>>, reusableNodes: ReusableNode[], outStackSlot = ''): string => {
+  const constructReplacement = (replace: Replace | ReplacePayload, placeholderVars: PlaceholderMap, reusableNodes: ReusableNode[], outStackSlot = ''): string => {
     if (typeof replace === 'string') return placeholderVars[replace] || placeholderExprs[replace]!
 
     if (replace[0] === Edit.i64_to_i32) {
       const operand = constructReplacement(replace[1], placeholderVars, reusableNodes)
-      return `Number(${constants}[${operand}]&0xFFFFFFFFn)`
+      return `Number(${constantsVar}[${operand}]&0xFFFFFFFFn)`
     }
 
     if (replace[0] === Edit.i32_add) {
@@ -600,16 +582,15 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
       }
       const operand1 = constructReplacement(replace1, placeholderVars, reusableNodes)
       const operand2 = constructReplacement(replace[2], placeholderVars, reusableNodes)
-      code += `${constants}[${operand1}]&=${constants}[${operand2}];`
+      code += `${constantsVar}[${operand1}]&=${constantsVar}[${operand2}];`
       return operand1
     }
 
     // Compute the value of the AST node itself
     const [op, ...operands] = replace
     const last = operands[operands.length - 1]
-    const hasPayload = typeof last === 'string' ? last === 'P' || last === 'Q' : last[0] < 0
-    const childCount = hasPayload ? operands.length - 1 : operands.length
-    const astNode = `${op | (childCount << Pack.ChildCountShift)}${outStackSlot}`
+    const hasPayload = typeof last === 'string' ? last === 'P' || last === 'Q' : typeof last[0] !== 'string' && last[0] < 0
+    const shiftedChildCount = (hasPayload ? operands.length - 1 : operands.length) << Pack.ChildCountShift
 
     // Try to reuse part of the old subtree for efficiency
     let bestScore = -1
@@ -628,53 +609,87 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
         if (score > bestScore) {
           bestScore = score
           bestIndex = i
-          newPtr = reusableNode.ptr_
+          newPtr = reusableNode.ptrVar_
           existingOperands = reusableNode.operands_
         }
       }
     }
-    if (newPtr) {
-      reusableNodes.splice(bestIndex!, 1) // Take this node so we don't accidentally reuse the same node twice
-      code += `${ast}[${newPtr}]=${astNode};`
+
+    // Assign to the node itself
+    if (typeof op === 'string' && oneOfOps[op]!.ptrVar_ === newPtr) {
+      // The node that this opcode came from is being reused and that node's
+      // opcode isn't changing because the replacement references the original
+      // opcode. In that case, we don't need to reassign the node at all.
     } else {
-      newPtr = newVarName()
-      code += `var ${newPtr}=${allocateNode}(${astNode},${replace.length});`
+      const node = (typeof op === 'string'
+        ? `${oneOfOps[op]!.opVar_}|${shiftedChildCount}`
+        : `${op | shiftedChildCount}`
+      ) + outStackSlot
+      if (newPtr) {
+        // Handle when we can reuse an existing node
+        reusableNodes.splice(bestIndex!, 1) // Take this node so we don't accidentally reuse the same node twice
+        code += `${astVar}[${newPtr}]=${node};`
+      } else {
+        // Handle when we need to allocate a new node
+        newPtr = newVarName()
+        code += `var ${newPtr}=${allocateNode}(${node},${replace.length});`
+      }
     }
+
+    // Copy over the operands (but skip no-ops when reusing a node)
     for (let i = 0; i < operands.length; i++) {
       if (existingOperands && operands[i] !== existingOperands[i]) {
         const value = constructReplacement(operands[i], placeholderVars, reusableNodes)
-        code += `${ast}[${newPtr}+${i + 1}]=${value};`
+        code += `${astVar}[${newPtr}+${i + 1}]=${value};`
       }
     }
+
     return newPtr
   }
 
-  const placeholderExprs: Partial<Record<Expr | Payload, string>> = {}
-  const recordStatsFn = newVarName()
-  const ast = newVarName()
-  const constants = newVarName()
+  interface OneOfOp {
+    ptrVar_: string
+    opVar_: string
+    canBeOptimized_: boolean
+  }
+
+  const placeholderExprs: PlaceholderMap = {}
+  const oneOfOps: Partial<Record<OneOfWithoutPayload | OneOfWithPayload, OneOfOp>> = {}
+  const recordStatsVar = newVarName()
+  const astVar = newVarName()
+  const constantsVar = newVarName()
   const allocateNode = newVarName()
-  const rootPtr = newVarName()
-  const rootOp = newVarName()
+  const rootPtrVar = newVarName()
+  const rootOpVar = newVarName()
   const opCanBeOptimized = new Set<Op>()
   for (const { match_: [pattern] } of rules) {
-    if (typeof pattern === 'number') opCanBeOptimized.add(pattern)
-    else for (const op of pattern) opCanBeOptimized.add(op)
+    if (typeof pattern === 'number') {
+      opCanBeOptimized.add(pattern)
+    } else {
+      const [, ...oneOf] = pattern
+      for (const op of oneOf) opCanBeOptimized.add(op)
+    }
   }
   let code = ''
-  code += `var ${rootOp}=${ast}[${rootPtr}]&${Pack.OpMask};`
-  compileRules(rootPtr, rootOp, rules, Enable.Stats ? matchToStatName : null, [], {})
-  code += 'return ' + rootPtr
+  code += `var ${rootOpVar}=${astVar}[${rootPtrVar}]&${Pack.OpMask};`
+  compileRules(rootPtrVar, rootOpVar, rules, Enable.Stats ? matchToStatName : null, [], {})
+  code += 'return ' + rootPtrVar
   return Enable.Stats
-    ? new Function(recordStatsFn, `return(${ast},${constants},${allocateNode},${rootPtr})=>{${code}}`)(recordStats)
-    : new Function(ast, constants, allocateNode, rootPtr, code)
+    ? new Function(recordStatsVar, `return(${astVar},${constantsVar},${allocateNode},${rootPtrVar})=>{${code}}`)(recordStats)
+    : new Function(astVar, constantsVar, allocateNode, rootPtrVar, code)
 }
 
 let stats: Record<string, number> | undefined
 let statsTimeout = 0
 
 const matchToStatName = ([pattern, ...operands]: Match): string => {
-  let text = '[' + (typeof pattern === 'number' ? Op[pattern] : pattern.map(op => Op[op]).join('|'))
+  let text = '['
+  if (typeof pattern === 'number') {
+    text += Op[pattern]
+  } else {
+    const [, ...oneOf] = pattern
+    text += oneOf.map(op => Op[op]).join('|')
+  }
   for (const operand of operands) text += ', ' + (typeof operand === 'string' ? operand : matchToStatName(operand))
   return text + ']'
 }
