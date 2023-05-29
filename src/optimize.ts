@@ -10,6 +10,10 @@
 
 import { Op, Pack } from './compile'
 
+const enum Enable {
+  Stats = 0, // Set this to 1 to enable statistics
+}
+
 type OpWithPayload =
   | Op.i32_const
   | Op.i64_const
@@ -345,7 +349,7 @@ const rules: Rule[] = [
 // code that does the subtree matching and replacement. This only needs to be
 // done once. The rules are compiled instead of interpreted to improve compile
 // speed, as these rules are applied to every node that the compiler generates.
-const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (node: number, length: number) => number, ptr: number) => number => {
+export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], allocateNode: (node: number, length: number) => number, ptr: number) => number => {
   interface ReusableNode {
     ptr_: string
     operands_: (Expr | Payload | null)[]
@@ -395,7 +399,13 @@ const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (n
     code += '}'
   }
 
-  const compileRules = (ptr: string, op: string, rules: Rule[], reusableNodes: ReusableNode[], placeholderVarsFromParent: Partial<Record<Expr | Payload, string>>): void => {
+  const compileRules = (ptr: string,
+    op: string,
+    rules: Rule[],
+    buildStatName: ((match: Match) => string) | null,
+    reusableNodes: ReusableNode[],
+    placeholderVarsFromParent: Partial<Record<Expr | Payload, string>>,
+  ): void => {
     for (const { match_: match, nested_: nested, replace_: replace, onlyIf_: onlyIf } of rules) {
       compileMatch(ptr, op, match, reusableNodes, reusableNodes => {
         const placeholderVars: Partial<Record<Expr | Payload, string>> = Object.create(placeholderVarsFromParent)
@@ -411,7 +421,14 @@ const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (n
               const childPtr = placeholderVars[operand as Expr]!
               const childOp = newVarName()
               code += `var ${childOp}=${ast}[${childPtr}]&${Pack.OpMask};`
-              compileRules(childPtr, childOp, nested[operand as Expr]!, reusableNodes, placeholderVars)
+              compileRules(
+                childPtr,
+                childOp,
+                nested[operand as Expr]!,
+                Enable.Stats ? subMatch => buildStatName!(substituteMatch(match, operand as Expr, subMatch)) : null,
+                reusableNodes,
+                placeholderVars,
+              )
             }
           }
 
@@ -420,6 +437,7 @@ const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (n
             // Make sure to preserve the output stack slot of the root node in
             // case this expression isn't inlined and we need to emit an
             // assignment to that stack slot.
+            if (Enable.Stats) code += `${recordStatsFn}(${JSON.stringify(buildStatName!(match))});`
             const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${ast}[${rootPtr}]&${~0 << Pack.OutSlotShift}`)
             code += 'return ' + replacePtr
           }
@@ -517,6 +535,7 @@ const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (n
   }
 
   const placeholderExprs: Partial<Record<Expr | Payload, string>> = {}
+  const recordStatsFn = newVarName()
   const ast = newVarName()
   const constants = newVarName()
   const allocateNode = newVarName()
@@ -524,9 +543,33 @@ const compileRules = (): (ast: Int32Array, constants: bigint[], allocateNode: (n
   const rootOp = newVarName()
   let code = ''
   code += `var ${rootOp}=${ast}[${rootPtr}]&${Pack.OpMask};`
-  compileRules(rootPtr, rootOp, rules, [], {})
+  compileRules(rootPtr, rootOp, rules, Enable.Stats ? matchToStatName : null, [], {})
   code += 'return ' + rootPtr
-  return new Function(ast, constants, allocateNode, rootPtr, code) as any
+  return Enable.Stats
+    ? new Function(recordStatsFn, `return(${ast},${constants},${allocateNode},${rootPtr})=>{${code}}`)(recordStats)
+    : new Function(ast, constants, allocateNode, rootPtr, code)
 }
 
-export const optimizeNode = compileRules()
+let stats: Record<string, number> | undefined
+let statsTimeout = 0
+
+const matchToStatName = ([pattern, ...operands]: Match): string => {
+  let text = '[' + (typeof pattern === 'number' ? Op[pattern] : pattern.map(op => Op[op]).join('|'))
+  for (const operand of operands) text += ', ' + (typeof operand === 'string' ? operand : matchToStatName(operand))
+  return text + ']'
+}
+
+const substituteMatch = ([pattern, ...operands]: Match, operand: Expr, replaceWith: Match): Match => {
+  const result: any = [pattern]
+  for (const x of operands) result.push(x === operand ? replaceWith : x)
+  return result
+}
+
+const recordStats = (statName: string): void => {
+  stats ||= {}
+  stats[statName] = (stats[statName] || 0) + 1
+  if (!statsTimeout) statsTimeout = setTimeout(() => {
+    statsTimeout = 0
+    console.log('stats:' + Object.keys(stats!).sort().map(x => `\n${x}: ${stats![x]}`).join(''))
+  })
+}

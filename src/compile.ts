@@ -3,10 +3,10 @@
 
 import { Context, ContextField } from './instantiate'
 import { LibFn, Library } from './library'
-import { optimizeNode } from './optimize'
+import { compileOptimizations } from './optimize'
 import { FuncType, Type, WASM } from './parse'
 
-export const enum Op {
+export enum Op {
   // These are prefixed by 0xFC
   i32_trunc_sat_f32_s = 0x00,
   i32_trunc_sat_f32_u = 0x01,
@@ -485,6 +485,8 @@ export const enum Pack {
 // for a single basic block at a time. This array is allocated once so that we
 // don't reallocate it every time we compile a function.
 const astBufferSingleton = new Int32Array(1 << 16)
+
+const optimizeNode = compileOptimizations()
 
 export const compileCode = (
   funcs: Function[],
