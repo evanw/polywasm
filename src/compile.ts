@@ -784,8 +784,10 @@ export const compileCode = (
         }
       }
 
-      // Then optimize the node itself
-      return optimizeNode(ast, constants, allocateNode, ptr)
+      // Then optimize the node itself (until a fixed point is reached)
+      ptr = optimizeNode(ast, constants, allocateNode, ptr)
+      while (ptr < 0) ptr = optimizeNode(ast, constants, allocateNode, ~ptr)
+      return ptr
     }
 
     // Optimize nodes in reverse

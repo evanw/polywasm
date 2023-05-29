@@ -127,12 +127,14 @@ type Replace =
 
 const enum Edit {
   i64_to_i32 = -1,
-  i64_and = -2,
+  i32_add = -2,
+  i64_and = -3,
 }
 
 type ReplacePayload =
   | Payload
   | [Edit.i64_to_i32, ReplacePayload]
+  | [Edit.i32_add, ReplacePayload, ReplacePayload]
   | [Edit.i64_and, ReplacePayload, ReplacePayload]
 
 type Check =
@@ -148,6 +150,102 @@ interface Rule {
 }
 
 const rules: Rule[] = [
+  // load of (addr + constant) => merge constant into load's offset
+  {
+    match_: [Op.i32_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i32_load, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.f32_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.f32_load, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.f64_load, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.f64_load, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_load8_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i32_load8_s, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_load8_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i32_load8_u, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_load16_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i32_load16_s, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_load16_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i32_load16_u, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load8_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load8_s, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load8_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load8_u, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load16_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load16_s, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load16_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load16_u, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load32_s, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load32_s, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_load32_u, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'P'],
+    replace_: [Op.i64_load32_u, 'x', [Edit.i32_add, 'P', 'Q']],
+  },
+
+  // store of (addr + constant) => merge constant into store's offset
+  {
+    match_: [Op.i32_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i32_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i64_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.f32_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.f32_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.f64_store, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.f64_store, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_store8, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i32_store8, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i32_store16, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i32_store16, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_store8, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i64_store8, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_store16, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i64_store16, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+  {
+    match_: [Op.i64_store32, [Op.i32_add, 'x', [Op.i32_const, 'Q']], 'y', 'P'],
+    replace_: [Op.i64_store32, 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+  },
+
   // i64_store8 => i32_store8
   {
     match_: [Op.i64_store8, 'x', 'y', 'P'],
@@ -349,6 +447,10 @@ const rules: Rule[] = [
 // code that does the subtree matching and replacement. This only needs to be
 // done once. The rules are compiled instead of interpreted to improve compile
 // speed, as these rules are applied to every node that the compiler generates.
+//
+// Note: If this function returns a negative number, then the returned pointer
+// is the 2's complement of the number and the optimization function should be
+// called again. Optimizations are iterated until a fixed point is reached.
 export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], allocateNode: (node: number, length: number) => number, ptr: number) => number => {
   interface ReusableNode {
     ptr_: string
@@ -439,7 +541,14 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
             // assignment to that stack slot.
             if (Enable.Stats) code += `${recordStatsFn}(${JSON.stringify(buildStatName!(match))});`
             const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${ast}[${rootPtr}]&${~0 << Pack.OutSlotShift}`)
-            code += 'return ' + replacePtr
+
+            // If we know how to optimize the resulting node, then return the
+            // 2's complement of the node pointer to tell the caller to run the
+            // optimizer again. This will cause a loop that will continue to
+            // optimize the node until no further optimizations are made. We
+            // don't call the current function ourselves as we don't have a
+            // reference to it (since we're using "new Function" to make it).
+            code += 'return' + (typeof replace !== 'string' && opCanBeOptimized.has(replace[0]) ? '~' : ' ') + replacePtr
           }
         })
       })
@@ -472,6 +581,17 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
   const constructReplacement = (replace: Replace | ReplacePayload, placeholderVars: Partial<Record<Expr | Payload, string>>, reusableNodes: ReusableNode[], outStackSlot = ''): string => {
     if (typeof replace === 'string') return placeholderVars[replace] || placeholderExprs[replace]!
 
+    if (replace[0] === Edit.i64_to_i32) {
+      const operand = constructReplacement(replace[1], placeholderVars, reusableNodes)
+      return `Number(${constants}[${operand}]&0xFFFFFFFFn)`
+    }
+
+    if (replace[0] === Edit.i32_add) {
+      const operand1 = constructReplacement(replace[1], placeholderVars, reusableNodes)
+      const operand2 = constructReplacement(replace[2], placeholderVars, reusableNodes)
+      return `${operand1}+${operand2}`
+    }
+
     if (replace[0] === Edit.i64_and) {
       const replace1 = replace[1]
       if (typeof replace1 === 'string') {
@@ -482,11 +602,6 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
       const operand2 = constructReplacement(replace[2], placeholderVars, reusableNodes)
       code += `${constants}[${operand1}]&=${constants}[${operand2}];`
       return operand1
-    }
-
-    if (replace[0] === Edit.i64_to_i32) {
-      const operand = constructReplacement(replace[1], placeholderVars, reusableNodes)
-      return `Number(${constants}[${operand}]&0xFFFFFFFFn)`
     }
 
     // Compute the value of the AST node itself
@@ -541,6 +656,11 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
   const allocateNode = newVarName()
   const rootPtr = newVarName()
   const rootOp = newVarName()
+  const opCanBeOptimized = new Set<Op>()
+  for (const { match_: [pattern] } of rules) {
+    if (typeof pattern === 'number') opCanBeOptimized.add(pattern)
+    else for (const op of pattern) opCanBeOptimized.add(op)
+  }
   let code = ''
   code += `var ${rootOp}=${ast}[${rootPtr}]&${Pack.OpMask};`
   compileRules(rootPtr, rootOp, rules, Enable.Stats ? matchToStatName : null, [], {})
