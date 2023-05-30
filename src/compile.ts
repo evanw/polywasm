@@ -262,8 +262,7 @@ const enum MetaFlag {
   Simple = 1 << 3, // Doesn't need special handling during the initial scan (e.g. not "call")
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
   HasAlign = 1 << 5, // Has an align byte (e.g. "i32_store8")
-  Control = 1 << 6, // This causes us to finalize the basic block (e.g. "end")
-  Omit = 1 << 7, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
+  Omit = 1 << 6, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
 }
 
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
@@ -271,18 +270,7 @@ const enum MetaFlag {
 // structure internally, where a "register" is a JavaScript local variable.
 const metaTable = new Uint8Array(256)
 
-metaTable[Op.unreachable] = MetaFlag.Control
 metaTable[Op.nop] = MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.block] = MetaFlag.Control
-metaTable[Op.loop] = MetaFlag.Control
-metaTable[Op.if] = MetaFlag.Control
-metaTable[Op.else] = MetaFlag.Control
-metaTable[Op.end] = MetaFlag.Control
-metaTable[Op.br] = MetaFlag.Control
-metaTable[Op.br_if] = MetaFlag.Control
-metaTable[Op.br_table] = MetaFlag.Control
-metaTable[Op.return] = MetaFlag.Control
-
 metaTable[Op.drop] = 1 | MetaFlag.Omit | MetaFlag.Simple
 
 metaTable[Op.local_get] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
@@ -764,7 +752,7 @@ export const compileCode = (
     return ptr
   }
 
-  const finalizeBasicBlock = (): void => {
+  const finalizeBasicBlock = (popStackTop = false): string | undefined => {
     const parts: string[] = []
     let i = astPtrs.length - 1
 
@@ -789,19 +777,28 @@ export const compileCode = (
     }
 
     // Optimize nodes in reverse
+    let ptr: string | null
     while (i >= 0) {
       const index = i--
-      const ptr = astPtrs[index]
-      if (ptr !== null) {
+      if ((ptr = astPtrs[index]) !== null) {
         astPtrs[index] = optimizeChildrenAndSelf(ptr)
       }
     }
 
     // Emit nodes in reverse
+    let result: string | undefined
     i = astPtrs.length - 1
+    if (popStackTop) {
+      if (i >= 0 && (ptr = astPtrs[i]) !== null && (ast[ptr] >>> Pack.OutSlotShift) === stackTop) {
+        result = emitUnwrapped(ptr)
+        i--
+      } else {
+        result = 's' + stackTop
+      }
+      stackTop--
+    }
     while (i >= 0) {
-      const ptr = astPtrs[i--]
-      if (ptr !== null) {
+      if ((ptr = astPtrs[i--]) !== null) {
         const stackSlot = ast[ptr] >>> Pack.OutSlotShift
         parts.push(`${stackSlot ? stackSlotName(stackSlot) + '=' : ''}${emitUnwrapped(ptr)};`)
       }
@@ -811,6 +808,7 @@ export const compileCode = (
     constants.length = 0
     astPtrs.length = 0
     astNextPtr = 0
+    return result
   }
 
   const {
@@ -943,26 +941,31 @@ export const compileCode = (
 
     // A few opcodes need special handling and can't be decoded with a table
     else {
-      if (flags & MetaFlag.Control) finalizeBasicBlock()
       switch (op) {
         case Op.unreachable:
+          finalizeBasicBlock()
           body += '"unreachable"();'
           blocks[blocks.length - 1].isDead_ = true
           break
 
         case Op.block:
+          finalizeBasicBlock()
           pushBlock(BlockKind.Normal)
           break
 
         case Op.loop:
+          finalizeBasicBlock()
           body += `case ${pushBlock(BlockKind.Loop)}:`
           break
 
-        case Op.if:
-          body += `if(!s${stackTop--}){L=${pushBlock(BlockKind.IfElse)};continue}`
+        case Op.if: {
+          const test = finalizeBasicBlock(true)
+          body += `if(!(${test})){L=${pushBlock(BlockKind.IfElse)};continue}`
           break
+        }
 
         case Op.else: {
+          finalizeBasicBlock()
           const index = blocks.length - 1, block = blocks[index]
           jump(index)
           body += `case ${block.labelContinueOrElse_}:`
@@ -973,6 +976,7 @@ export const compileCode = (
         }
 
         case Op.end: {
+          finalizeBasicBlock()
           const index = blocks.length - 1, block = blocks[index]
           if (block.kind_ !== BlockKind.IfElse) block.labelContinueOrElse_ = 0 // Emit the "else" label if there was no "else" branch
           block.kind_ = BlockKind.Normal // Emit "break" not "continue"
@@ -985,18 +989,22 @@ export const compileCode = (
         }
 
         case Op.br:
+          finalizeBasicBlock()
           jump()
           blocks[blocks.length - 1].isDead_ = true
           break
 
-        case Op.br_if:
-          body += `if(s${stackTop--}){`
+        case Op.br_if: {
+          const test = finalizeBasicBlock(true)
+          body += `if(${test}){`
           jump()
           body += '}'
           break
+        }
 
-        case Op.br_table:
-          body += `switch(s${stackTop--}){`
+        case Op.br_table: {
+          const test = finalizeBasicBlock(true)
+          body += `switch(${test}){`
           for (let i = 0, tableCount = readU32LEB(); i < tableCount; i++) {
             body += `case ${i}:`
             jump()
@@ -1006,8 +1014,10 @@ export const compileCode = (
           body += '}'
           blocks[blocks.length - 1].isDead_ = true
           break
+        }
 
         case Op.return:
+          finalizeBasicBlock()
           jump(0)
           blocks[blocks.length - 1].isDead_ = true
           break
