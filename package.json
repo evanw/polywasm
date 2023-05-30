@@ -11,9 +11,11 @@
   },
   "scripts": {
     "build": "esbuild --bundle --target=es2020 src/index.ts --outfile=index.js --format=esm \"--mangle-props=_$\" && esbuild --bundle --target=es2020 src/index.ts --outfile=index.min.js --format=esm \"--mangle-props=_$\" --minify",
+    "check": "tsc -noEmit -p src",
     "test": "node test/run.js"
   },
   "devDependencies": {
-    "esbuild": "0.17.19"
+    "esbuild": "0.17.19",
+    "typescript": "5.0.4"
   }
 }
