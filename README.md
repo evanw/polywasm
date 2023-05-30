@@ -2,6 +2,15 @@
 
 This is a polyfill for WebAssembly. It implements enough of the [WebAssembly API](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface) to be able to run a `.wasm` file in a JavaScript environment that lacks a WebAssembly implementation. This is done by parsing the `.wasm` file and translating each WebAssembly function to a JavaScript function. This is not nearly as fast as running WebAssembly natively, but it's better than it not running at all.
 
+## Live demo
+
+This polyfill is used as a fallback WebAssembly implementation for esbuild's online playground. You can use these links below to compare the playground with this polyfill enabled vs. disabled:
+
+- [Try esbuild playground's with this polyfill enabled](https://esbuild.github.io/try/?polywasm=1)
+- [Try esbuild playground's with this polyfill disabled](https://esbuild.github.io/try/?polywasm=0)
+
+The playground shows off [esbuild](https://esbuild.github.io/), which is a JavaScript code transformation tool (among other things). You'll need to type or paste some JavaScript code into the `(enter your code here)` textbox for esbuild to run.
+
 ## Why does this exist?
 
 WebAssembly support is already widespread so you don't normally need a polyfill to use it. However, certain modern JavaScript environments have WebAssembly disabled. For example, Apple's [Lockdown Mode](https://support.apple.com/en-us/HT212650) (an opt-in security enhancement) disables WebAssembly in Safari. You can use this polyfill to make a WebAssembly-based app work in Safari in Lockdown Mode anyway. It will be extremely slow because Lockdown Mode also disables JavaScript optimizations, but sometimes performance isn't critical.
