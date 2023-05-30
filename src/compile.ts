@@ -222,6 +222,10 @@ export enum Op {
   BOOL = 0xF0,
   BOOL_NOT = 0xF1,
   BOOL_TO_INT = 0xF2,
+  TO_U32 = 0xF3,
+  TO_S64 = 0xF4,
+  U32_LOAD = 0xF5,
+  S64_LOAD = 0xF6,
 }
 
 const enum BlockKind {
@@ -257,7 +261,7 @@ export const castToWASM = (code: string, type: Type): string => {
 export const castToJS = (code: string, type: Type): string => {
   if (type === Type.F64 || type === Type.I32) return code
   if (type === Type.F32) return `Math.fround(${code})`
-  if (type === Type.I64) return `l.${LibFn.u64_to_i64}(${code})`
+  if (type === Type.I64) return `l.${LibFn.u64_to_s64}(${code})`
   throw new Error('Unsupported cast to type ' + type)
 }
 
@@ -268,13 +272,15 @@ const enum MetaFlag {
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
   HasAlign = 1 << 5, // Has an align byte (e.g. "i32_store8")
   BoolToInt = 1 << 6, // Results in a boolean that must be casted back to an i32
-  Omit = 1 << 7, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
+  ToU32 = 1 << 7, // Arguments should be converted to 32-bit unsigned
+  ToS64 = 1 << 8, // Arguments should be converted to 64-bit signed
+  Omit = 1 << 9, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
 }
 
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
 // have a regular stack-based structure. This is translated into a register-based
 // structure internally, where a "register" is a JavaScript local variable.
-const metaTable = new Uint8Array(256)
+const metaTable = new Uint16Array(256)
 
 metaTable[Op.nop] = MetaFlag.Omit | MetaFlag.Simple
 metaTable[Op.drop] = 1 | MetaFlag.Omit | MetaFlag.Simple
@@ -316,24 +322,24 @@ metaTable[Op.i32_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 metaTable[Op.i32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 metaTable[Op.i32_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
 metaTable[Op.i32_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
 metaTable[Op.i32_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
 metaTable[Op.i32_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
 
 metaTable[Op.i64_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 metaTable[Op.i64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
 metaTable[Op.i64_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
 metaTable[Op.i64_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
 metaTable[Op.i64_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
 metaTable[Op.i64_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 
 metaTable[Op.f32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
@@ -357,9 +363,9 @@ metaTable[Op.i32_add] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_div_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_div_u] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_div_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32
 metaTable[Op.i32_rem_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32
 metaTable[Op.i32_and] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_or] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_xor] = 2 | MetaFlag.Push | MetaFlag.Simple
@@ -375,9 +381,9 @@ metaTable[Op.i64_popcnt] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_add] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_div_s] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_div_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
 metaTable[Op.i64_div_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_rem_s] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_rem_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
 metaTable[Op.i64_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_and] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_or] = 2 | MetaFlag.Push | MetaFlag.Simple
@@ -429,16 +435,16 @@ metaTable[Op.i64_trunc_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_trunc_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_trunc_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_trunc_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_convert_i32_s] = MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f32_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.f32_convert_i32_s] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
+metaTable[Op.f32_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32
+metaTable[Op.f32_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
 metaTable[Op.f32_convert_i64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_demote_f64] = MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f64_convert_i32_s] = MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f64_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.f32_demote_f64] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
+metaTable[Op.f64_convert_i32_s] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
+metaTable[Op.f64_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32
+metaTable[Op.f64_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
 metaTable[Op.f64_convert_i64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_promote_f32] = MetaFlag.Omit | MetaFlag.Simple
+metaTable[Op.f64_promote_f32] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
 metaTable[Op.i32_reinterpret_f32] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_reinterpret_f64] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.f32_reinterpret_i32] = 1 | MetaFlag.Push | MetaFlag.Simple
@@ -635,7 +641,9 @@ export const compileCode = (
       case Op.global_set: return `g[${ast[ptr + 2]}]=${emit(ast[ptr + 1])}`
 
       case Op.i32_load: return load('Int32', ast[ptr + 1], ast[ptr + 2])
+      case Op.U32_LOAD: return load('Uint32', ast[ptr + 1], ast[ptr + 2])
       case Op.i64_load: return load('BigUint64', ast[ptr + 1], ast[ptr + 2])
+      case Op.S64_LOAD: return load('BigInt64', ast[ptr + 1], ast[ptr + 2])
       case Op.f32_load: return load('Float32', ast[ptr + 1], ast[ptr + 2])
       case Op.f64_load: return load('Float64', ast[ptr + 1], ast[ptr + 2])
       case Op.i32_load8_s: return load8(ContextField.Int8Array, ast[ptr + 1], ast[ptr + 2])
@@ -675,24 +683,16 @@ export const compileCode = (
       case Op.BOOL: return emit(ast[ptr + 1])
       case Op.BOOL_NOT: return `!${emit(ast[ptr + 1])}`
       case Op.BOOL_TO_INT: return `${emit(ast[ptr + 1])}?1:0`
-
-      case Op.i32_lt_u: return `(${emit(ast[ptr + 1])}>>>0)<(${emit(ast[ptr + 2])}>>>0)`
-      case Op.i32_gt_u: return `(${emit(ast[ptr + 1])}>>>0)>(${emit(ast[ptr + 2])}>>>0)`
-      case Op.i32_le_u: return `(${emit(ast[ptr + 1])}>>>0)<=(${emit(ast[ptr + 2])}>>>0)`
-      case Op.i32_ge_u: return `(${emit(ast[ptr + 1])}>>>0)>=(${emit(ast[ptr + 2])}>>>0)`
-
-      case Op.i64_lt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
-      case Op.i64_gt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
-      case Op.i64_le_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
-      case Op.i64_ge_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
+      case Op.TO_U32: return `${emit(ast[ptr + 1])}>>>0`
+      case Op.TO_S64: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})`
 
       case Op.i32_eqz: case Op.i64_eqz: return `${emit(ast[ptr + 1])}?0:1`
       case Op.i32_eq: case Op.i64_eq: case Op.f32_eq: case Op.f64_eq: return `${emit(ast[ptr + 1])}===${emit(ast[ptr + 2])}`
       case Op.i32_ne: case Op.i64_ne: case Op.f32_ne: case Op.f64_ne: return `${emit(ast[ptr + 1])}!==${emit(ast[ptr + 2])}`
-      case Op.i32_lt_s: case Op.i64_lt_u: case Op.f32_lt: case Op.f64_lt: return `${emit(ast[ptr + 1])}<${emit(ast[ptr + 2])}`
-      case Op.i32_gt_s: case Op.i64_gt_u: case Op.f32_gt: case Op.f64_gt: return `${emit(ast[ptr + 1])}>${emit(ast[ptr + 2])}`
-      case Op.i32_le_s: case Op.i64_le_u: case Op.f32_le: case Op.f64_le: return `${emit(ast[ptr + 1])}<=${emit(ast[ptr + 2])}`
-      case Op.i32_ge_s: case Op.i64_ge_u: case Op.f32_ge: case Op.f64_ge: return `${emit(ast[ptr + 1])}>=${emit(ast[ptr + 2])}`
+      case Op.i32_lt_s: case Op.i32_lt_u: case Op.i64_lt_s: case Op.i64_lt_u: case Op.f32_lt: case Op.f64_lt: return `${emit(ast[ptr + 1])}<${emit(ast[ptr + 2])}`
+      case Op.i32_gt_s: case Op.i32_gt_u: case Op.i64_gt_s: case Op.i64_gt_u: case Op.f32_gt: case Op.f64_gt: return `${emit(ast[ptr + 1])}>${emit(ast[ptr + 2])}`
+      case Op.i32_le_s: case Op.i32_le_u: case Op.i64_le_s: case Op.i64_le_u: case Op.f32_le: case Op.f64_le: return `${emit(ast[ptr + 1])}<=${emit(ast[ptr + 2])}`
+      case Op.i32_ge_s: case Op.i32_ge_u: case Op.i64_ge_s: case Op.i64_ge_u: case Op.f32_ge: case Op.f64_ge: return `${emit(ast[ptr + 1])}>=${emit(ast[ptr + 2])}`
 
       case Op.i32_clz: return `Math.clz32(${emit(ast[ptr + 1])})`
       case Op.i32_ctz: return `l.${LibFn.i32_ctz}(${emit(ast[ptr + 1])})`
@@ -700,10 +700,8 @@ export const compileCode = (
       case Op.i32_add: return `${emit(ast[ptr + 1])}+${emit(ast[ptr + 2])}|0`
       case Op.i32_sub: return `${emit(ast[ptr + 1])}-${emit(ast[ptr + 2])}|0`
       case Op.i32_mul: return `Math.imul(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
-      case Op.i32_div_s: return `${emit(ast[ptr + 1])}/${emit(ast[ptr + 2])}|0`
-      case Op.i32_div_u: return `(${emit(ast[ptr + 1])}>>>0)/(${emit(ast[ptr + 2])}>>>0)|0`
-      case Op.i32_rem_s: return `${emit(ast[ptr + 1])}%${emit(ast[ptr + 2])}|0`
-      case Op.i32_rem_u: return `(${emit(ast[ptr + 1])}>>>0)%(${emit(ast[ptr + 2])}>>>0)|0`
+      case Op.i32_div_u: case Op.i32_div_s: return `${emit(ast[ptr + 1])}/${emit(ast[ptr + 2])}|0`
+      case Op.i32_rem_u: case Op.i32_rem_s: return `${emit(ast[ptr + 1])}%${emit(ast[ptr + 2])}|0`
       case Op.i32_and: return `${emit(ast[ptr + 1])}&${emit(ast[ptr + 2])}`
       case Op.i32_or: return `${emit(ast[ptr + 1])}|${emit(ast[ptr + 2])}`
       case Op.i32_xor: return `${emit(ast[ptr + 1])}^${emit(ast[ptr + 2])}`
@@ -719,15 +717,15 @@ export const compileCode = (
       case Op.i64_add: return `(${emit(ast[ptr + 1])}+${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_sub: return `(${emit(ast[ptr + 1])}-${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_mul: return `(${emit(ast[ptr + 1])}*${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_div_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})/l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_div_s: return `${emit(ast[ptr + 1])}/${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_div_u: return `${emit(ast[ptr + 1])}/${emit(ast[ptr + 2])}`
-      case Op.i64_rem_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})%l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_rem_s: return `${emit(ast[ptr + 1])}%${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_rem_u: return `${emit(ast[ptr + 1])}%${emit(ast[ptr + 2])}`
       case Op.i64_and: return `${emit(ast[ptr + 1])}&${emit(ast[ptr + 2])}`
       case Op.i64_or: return `${emit(ast[ptr + 1])}|${emit(ast[ptr + 2])}`
       case Op.i64_xor: return `${emit(ast[ptr + 1])}^${emit(ast[ptr + 2])}`
       case Op.i64_shl: return `${emit(ast[ptr + 1])}<<(${emit(ast[ptr + 2])}&63n)&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_shr_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>>(${emit(ast[ptr + 2])}&63n)&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_shr_s: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})>>(${emit(ast[ptr + 2])}&63n)&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_shr_u: return `${emit(ast[ptr + 1])}>>(${emit(ast[ptr + 2])}&63n)`
       case Op.i64_rotl: return `l.${LibFn.i64_rotl}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
       case Op.i64_rotr: return `l.${LibFn.i64_rotr}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
@@ -752,9 +750,7 @@ export const compileCode = (
       case Op.i64_extend_i32_s: return `BigInt(${emit(ast[ptr + 1])})`
       case Op.i64_extend_i32_u: return `BigInt(${emit(ast[ptr + 1])}>>>0)`
       case Op.i64_trunc_f32_s: case Op.i64_trunc_f32_u: case Op.i64_trunc_f64_s: case Op.i64_trunc_f64_u: return `BigInt(Math.trunc(${emit(ast[ptr + 1])}))&0xFFFFFFFFFFFFFFFFn`
-      case Op.f32_convert_i32_u: case Op.f64_convert_i32_u: return `${emit(ast[ptr + 1])}>>>0`
-      case Op.f32_convert_i64_s: case Op.f64_convert_i64_s: return `Number(l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])}))`
-      case Op.f32_convert_i64_u: case Op.f64_convert_i64_u: return `Number(${emit(ast[ptr + 1])})`
+      case Op.f32_convert_i64_s: case Op.f32_convert_i64_u: case Op.f64_convert_i64_u: case Op.f64_convert_i64_s: return `Number(${emit(ast[ptr + 1])})`
       case Op.i32_reinterpret_f32: return `l.${LibFn.i32_reinterpret_f32}(${emit(ast[ptr + 1])})`
       case Op.i64_reinterpret_f64: return `l.${LibFn.i64_reinterpret_f64}(${emit(ast[ptr + 1])})`
       case Op.f32_reinterpret_i32: return `l.${LibFn.f32_reinterpret_i32}(${emit(ast[ptr + 1])})`
@@ -777,10 +773,10 @@ export const compileCode = (
     return ptr
   }
 
-  const pushUnary = (op: Op): void => {
+  const pushUnary = (op: Op, stackSlot = stackTop): void => {
     astPtrs.push(astNextPtr)
-    ast[astNextPtr++] = op | (1 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-    ast[astNextPtr++] = -stackTop
+    ast[astNextPtr++] = op | (1 << Pack.ChildCountShift) | (stackSlot << Pack.OutSlotShift)
+    ast[astNextPtr++] = -stackSlot
   }
 
   const finalizeBasicBlock = (popStackTop = false): string | undefined => {
@@ -794,12 +790,29 @@ export const compileCode = (
       // Optimize the children first
       for (let j = childCount - 1; i >= 0 && j >= 0; j--) {
         const stackSlot = -ast[ptr + j + 1]
-        const prevPtr = astPtrs[i]!
+        let didSkip = false
 
-        // If this load is from the previous store, inline the node
-        if ((ast[prevPtr] >>> Pack.OutSlotShift) === stackSlot) {
-          astPtrs[i--] = null // Prevent inlined nodes from being emitted at the top level
-          ast[ptr + j + 1] = optimizeChildrenAndSelf(prevPtr)
+        for (let k = i; k >= 0; k--) {
+          const prevPtr = astPtrs[k]
+          if (prevPtr === null) continue
+
+          // If this load is from the previous store, inline the node
+          const prevNode = ast[prevPtr]
+          if ((prevNode >>> Pack.OutSlotShift) === stackSlot) {
+            astPtrs[k] = null // Prevent inlined nodes from being emitted at the top level
+            if (!didSkip) i = k - 1 // No need to re-scan these nodes
+            ast[ptr + j + 1] = optimizeChildrenAndSelf(prevPtr)
+            break
+          }
+
+          // Skip over this node to keep scanning for something to inline if we
+          // know it's safe to do so (a side-effect free unary operation that
+          // mutates a single stack slot in place). This is done for these sign
+          // conversion opcodes because we generate them immediately before the
+          // parent opcode, and they would prevent inlining if we don't do this.
+          const prevOp = prevNode & Pack.OpMask
+          if (prevOp !== Op.TO_U32 && prevOp !== Op.TO_S64) break
+          didSkip = true
         }
       }
 
@@ -940,6 +953,11 @@ export const compileCode = (
       if (!blocks[blocks.length - 1].isDead_) {
         const childCount = flags & MetaFlag.PopMask
         stackTop -= childCount
+        if (flags & (MetaFlag.ToU32 | MetaFlag.ToS64)) {
+          for (let i = 0; i < childCount; i++) {
+            pushUnary(flags & MetaFlag.ToU32 ? Op.TO_U32 : Op.TO_S64, stackTop + i + 1)
+          }
+        }
         if (!(flags & MetaFlag.Omit)) {
           if (flags & MetaFlag.HasAlign) bytesPtr++ // Alignment hints are ignored
           astPtrs.push(astNextPtr)
@@ -947,9 +965,9 @@ export const compileCode = (
           ast[astNextPtr++] = op | (childCount << Pack.ChildCountShift)
           for (let i = 1; i <= childCount; i++) ast[astNextPtr++] = -(stackTop + i)
           if (flags & MetaFlag.HasIndex) ast[astNextPtr++] = readU32LEB()
-          if (flags & MetaFlag.Push) stackTop++
-          if (flags & MetaFlag.BoolToInt) pushUnary(Op.BOOL_TO_INT)
         }
+        if (flags & MetaFlag.Push) stackTop++
+        if (flags & MetaFlag.BoolToInt) pushUnary(Op.BOOL_TO_INT)
       } else {
         if (flags & MetaFlag.HasAlign) bytesPtr++
         if (flags & MetaFlag.HasIndex) readU32LEB()

@@ -15,6 +15,9 @@ const enum Enable {
 }
 
 type OpWithPayload =
+  | Op.U32_LOAD
+  | Op.S64_LOAD
+
   | Op.i32_const
   | Op.i64_const
 
@@ -47,6 +50,8 @@ type OpWithoutPayload =
   | Op.BOOL
   | Op.BOOL_NOT
   | Op.BOOL_TO_INT
+  | Op.TO_U32
+  | Op.TO_S64
 
   | Op.i32_eqz
   | Op.i32_eq
@@ -396,6 +401,40 @@ const rules: Rule[] = [
         { match_: [Op.i64_ge_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_lt_u, 'y', 'z']] },
       ],
     }
+  },
+
+  // Optimize sign conversions
+  {
+    match_: [Op.TO_U32, 'x'],
+    nested_: {
+      'x': [
+        {
+          match_: [Op.i32_load, 'y', 'P'],
+          replace_: [Op.U32_LOAD, 'y', 'P'],
+        },
+      ],
+    },
+  },
+  {
+    match_: [Op.TO_S64, 'x'],
+    nested_: {
+      'x': [
+        {
+          match_: [Op.i64_load, 'y', 'P'],
+          replace_: [Op.S64_LOAD, 'y', 'P'],
+        },
+        // No sign conversion is needed for values in the shared signed/unsigned range
+        {
+          match_: [Op.i64_const, 'P'],
+          replace_: [Op.i64_const, 'P'],
+          onlyIf_: ['P', '<=', 0x7FFF_FFFF_FFFF_FFFFn],
+        },
+        {
+          match_: [['$', Op.i64_load8_u, Op.i64_load16_u, Op.i64_load32_u], 'y', 'P'],
+          replace_: ['$', 'y', 'P'],
+        },
+      ],
+    },
   },
 
   // i32_wrap_i64 removal

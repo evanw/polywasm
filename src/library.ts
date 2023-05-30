@@ -1,6 +1,6 @@
 export const enum LibFn {
   copysign = 'la',
-  u64_to_i64 = 'lb',
+  u64_to_s64 = 'lb',
   i32_reinterpret_f32 = 'lc',
   f32_reinterpret_i32 = 'ld',
   i64_reinterpret_f64 = 'le',
@@ -37,7 +37,7 @@ export const createLibrary = () => {
     [LibFn.copysign](x: number, y: number): number {
       return (x < 0 || (x === 0 && Object.is(x, -0))) !== (y < 0 || (y === 0 && Object.is(y, -0))) ? -x : x
     },
-    [LibFn.u64_to_i64](x: bigint): bigint {
+    [LibFn.u64_to_s64](x: bigint): bigint {
       u64[0] = x
       return i64[0]
     },
