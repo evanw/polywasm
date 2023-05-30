@@ -142,7 +142,7 @@ type ReplacePayload =
 type Check =
   | Payload
   | bigint
-  | [Check, '===' | '&', Check]
+  | [Check, '===' | '!==' | '<' | '>' | '<=' | '>=' | '&' | '|' | '^', Check]
 
 interface Rule {
   match_: Match
@@ -315,6 +315,38 @@ const rules: Rule[] = [
         },
       ],
     },
+  },
+
+  // 64-bit equality on unsigned 32-bit load => 32-bit equality
+  {
+    match_: [Op.i64_eq, [Op.i64_load8_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load8_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFn],
+  },
+  {
+    match_: [Op.i64_ne, [Op.i64_load8_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load8_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFn],
+  },
+  {
+    match_: [Op.i64_eq, [Op.i64_load16_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load16_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFFFn],
+  },
+  {
+    match_: [Op.i64_ne, [Op.i64_load16_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load16_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFFFn],
+  },
+  {
+    match_: [Op.i64_eq, [Op.i64_load32_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFFFFFFFn],
+  },
+  {
+    match_: [Op.i64_ne, [Op.i64_load32_u, 'x', 'P'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    onlyIf_: ['Q', '<=', 0xFFFFFFFFn],
   },
 
   // i32_wrap_i64 removal
@@ -541,8 +573,12 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
   const compileOnlyIf = (onlyIf: Check | undefined, placeholderVars: PlaceholderMap, then: () => void): void => {
     if (onlyIf) {
       const compileCheck = (onlyIf: Check): string => {
-        if (typeof onlyIf === 'string') return `${constantsVar}[${placeholderVars[onlyIf] || placeholderExprs[onlyIf]}]`
-        if (typeof onlyIf === 'bigint') return onlyIf + 'n'
+        if (typeof onlyIf === 'string') {
+          return `${constantsVar}[${placeholderVars[onlyIf] || placeholderExprs[onlyIf]}]&0xFFFFFFFFFFFFFFFFn`
+        }
+        if (typeof onlyIf === 'bigint') {
+          return onlyIf + 'n'
+        }
         return `(${compileCheck(onlyIf[0])})${onlyIf[1]}(${compileCheck(onlyIf[2])})`
       }
       code += `if(${compileCheck(onlyIf)}){`

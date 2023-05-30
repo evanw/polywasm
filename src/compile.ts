@@ -777,7 +777,7 @@ export const compileCode = (
     }
 
     // Optimize nodes in reverse
-    let ptr: string | null
+    let ptr: number | null
     while (i >= 0) {
       const index = i--
       if ((ptr = astPtrs[index]) !== null) {
