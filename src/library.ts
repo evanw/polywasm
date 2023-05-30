@@ -64,11 +64,11 @@ export const createLibrary = () => {
       return x >>> y | x << 32 - y
     },
     [LibFn.i64_rotl](x: bigint, y: bigint) {
-      y &= 63n
+      // Note: "y" is already "y & 63n" from the caller
       return (x << y | x >> 64n - y) & 0xFFFF_FFFF_FFFF_FFFFn
     },
     [LibFn.i64_rotr](x: bigint, y: bigint) {
-      y &= 63n
+      // Note: "y" is already "y & 63n" from the caller
       return (x >> y | x << 64n - y) & 0xFFFF_FFFF_FFFF_FFFFn
     },
     [LibFn.i32_ctz](x: number): number {

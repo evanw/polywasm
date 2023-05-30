@@ -275,6 +275,7 @@ const enum MetaFlag {
   ToU32 = 1 << 7, // Arguments should be converted to 32-bit unsigned
   ToS64 = 1 << 8, // Arguments should be converted to 64-bit signed
   Omit = 1 << 9, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
+  And63 = 1 << 10, // The second operand needs a bitwise-and with 63
 }
 
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
@@ -388,11 +389,11 @@ metaTable[Op.i64_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_and] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_or] = 2 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_xor] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_shl] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_shr_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_shr_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_rotl] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_rotr] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_shl] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
+metaTable[Op.i64_shr_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
+metaTable[Op.i64_shr_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
+metaTable[Op.i64_rotl] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
+metaTable[Op.i64_rotr] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
 
 metaTable[Op.f32_abs] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.f32_neg] = 1 | MetaFlag.Push | MetaFlag.Simple
@@ -724,9 +725,9 @@ export const compileCode = (
       case Op.i64_and: return `${emit(ast[ptr + 1])}&${emit(ast[ptr + 2])}`
       case Op.i64_or: return `${emit(ast[ptr + 1])}|${emit(ast[ptr + 2])}`
       case Op.i64_xor: return `${emit(ast[ptr + 1])}^${emit(ast[ptr + 2])}`
-      case Op.i64_shl: return `${emit(ast[ptr + 1])}<<(${emit(ast[ptr + 2])}&63n)&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_shr_s: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})>>(${emit(ast[ptr + 2])}&63n)&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_shr_u: return `${emit(ast[ptr + 1])}>>(${emit(ast[ptr + 2])}&63n)`
+      case Op.i64_shl: return `${emit(ast[ptr + 1])}<<${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_shr_s: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})>>${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_shr_u: return `${emit(ast[ptr + 1])}>>${emit(ast[ptr + 2])}`
       case Op.i64_rotl: return `l.${LibFn.i64_rotl}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
       case Op.i64_rotr: return `l.${LibFn.i64_rotr}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
 
@@ -952,6 +953,16 @@ export const compileCode = (
     if (flags & MetaFlag.Simple) {
       if (!blocks[blocks.length - 1].isDead_) {
         const childCount = flags & MetaFlag.PopMask
+        if (flags & MetaFlag.And63) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = Op.i64_const | ((stackTop + 1) << Pack.OutSlotShift)
+          ast[astNextPtr++] = constants.length
+          constants.push(63n)
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = Op.i64_and | (2 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = -stackTop
+          ast[astNextPtr++] = -(stackTop + 1)
+        }
         stackTop -= childCount
         if (flags & (MetaFlag.ToU32 | MetaFlag.ToS64)) {
           for (let i = 0; i < childCount; i++) {

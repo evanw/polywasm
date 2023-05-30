@@ -484,6 +484,10 @@ const rules: Rule[] = [
     nested_: {
       'x': [
         {
+          match_: [Op.i64_const, 'Q'],
+          replace_: [Op.i64_const, [Edit.i64_and, 'P', 'Q']],
+        },
+        {
           match_: [Op.i64_and, 'y', [Op.i64_const, 'Q']],
           replace_: [Op.i64_and, 'y', [Op.i64_const, [Edit.i64_and, 'P', 'Q']]],
         },
