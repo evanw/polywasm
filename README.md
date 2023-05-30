@@ -65,7 +65,7 @@ Encoding the child count in the node metadata and putting optional extra data af
 
 ### Optimizations
 
-The AST is optimized using a declarative set of [peephole optimization](https://en.wikipedia.org/wiki/Peephole_optimization) rules before it's converted into JavaScript. These optimizations are tuned for the [Go](https://go.dev/) compiler's WebAssembly output, which does a lot of unnecessary 64-bit math. That's mostly fine when running WebAssembly natively but is pretty expensive when running WebAssembly via JS using BigInts. Avoiding unnecessary BigInts gives a decent performance boost (~50% faster).
+The AST is optimized using a declarative set of [peephole optimization](https://en.wikipedia.org/wiki/Peephole_optimization) rules before it's converted into JavaScript. These optimizations are tuned for the [Go](https://go.dev/) compiler's WebAssembly output, which does a lot of unnecessary 64-bit math. That's mostly fine when running WebAssembly natively but is pretty expensive when running WebAssembly via JS using BigInts. Avoiding unnecessary BigInts gives a decent performance boost.
 
 For example, WebAssembly bytecode that extends a 32-bit integer out to 64-bit, adds a constant, and then wraps that integer back to 32-bit can be more efficiently represented using a 32-bit add bytecode instead:
 

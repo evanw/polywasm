@@ -5,8 +5,7 @@
 // These optimizations are tuned for the Go compiler's WebAssembly output,
 // which does a lot of unnecessary 64-bit math. That's mostly fine when running
 // WebAssembly natively but is pretty expensive when running WebAssembly via JS
-// using BigInts. Avoiding unnecessary BigInts gives a decent performance boost
-// (~50% faster).
+// using BigInts. Avoiding unnecessary BigInts gives a decent performance boost.
 
 import { Op, Pack } from './compile'
 
