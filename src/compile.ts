@@ -217,6 +217,11 @@ export enum Op {
   i64_extend8_s = 0xC2,
   i64_extend16_s = 0xC3,
   i64_extend32_s = 0xC4,
+
+  // These are our own opcodes, and are not part of WebAssembly
+  BOOL = 0xF0,
+  BOOL_NOT = 0xF1,
+  BOOL_TO_INT = 0xF2,
 }
 
 const enum BlockKind {
@@ -262,7 +267,8 @@ const enum MetaFlag {
   Simple = 1 << 3, // Doesn't need special handling during the initial scan (e.g. not "call")
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
   HasAlign = 1 << 5, // Has an align byte (e.g. "i32_store8")
-  Omit = 1 << 6, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
+  BoolToInt = 1 << 6, // Results in a boolean that must be casted back to an i32
+  Omit = 1 << 7, // This causes us to omit the instruction entirely (e.g. "f64_promote_f32")
 }
 
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
@@ -307,42 +313,42 @@ metaTable[Op.memory_size] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.memory_grow] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 
 metaTable[Op.i32_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i32_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 
 metaTable[Op.i64_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.i64_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 
-metaTable[Op.f32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_lt] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_gt] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_le] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_ge] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.f32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f32_lt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f32_gt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f32_le] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f32_ge] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 
-metaTable[Op.f64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_lt] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_gt] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_le] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_ge] = 2 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.f64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f64_lt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f64_gt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f64_le] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.f64_ge] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 
 metaTable[Op.i32_clz] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i32_ctz] = 1 | MetaFlag.Push | MetaFlag.Simple
@@ -523,6 +529,21 @@ export const compileCode = (
     return shift < 64 && (byte & 0x40) ? value | (~0n << shift) : value
   }
 
+  const readBlockType = (): [argCount: number, returnCount: number] => {
+    const byte = bytes[bytesPtr]
+    if (byte === 0x40) {
+      bytesPtr++
+      return [0, 0]
+    }
+    if (byte & 0x40) {
+      bytesPtr++
+      return [0, 1]
+    }
+    const typeIndex = readU32LEB()
+    const [argTypes, returnTypes] = typeSection[typeIndex]
+    return [argTypes.length, returnTypes.length]
+  }
+
   // A basic block is a sequence of non-branching instructions. Optimizations
   // are only done within a basic block, but not across basic blocks. We decode
   // WASM into our basic block IR until we hit a branch. Then we generate code
@@ -651,23 +672,27 @@ export const compileCode = (
       case Op.f32_const: return dataView.getFloat32(ast[ptr + 1], true) + ''
       case Op.f64_const: return dataView.getFloat64(ast[ptr + 1], true) + ''
 
-      case Op.i32_lt_u: return `(${emit(ast[ptr + 1])}>>>0)<(${emit(ast[ptr + 2])}>>>0)?1:0`
-      case Op.i32_gt_u: return `(${emit(ast[ptr + 1])}>>>0)>(${emit(ast[ptr + 2])}>>>0)?1:0`
-      case Op.i32_le_u: return `(${emit(ast[ptr + 1])}>>>0)<=(${emit(ast[ptr + 2])}>>>0)?1:0`
-      case Op.i32_ge_u: return `(${emit(ast[ptr + 1])}>>>0)>=(${emit(ast[ptr + 2])}>>>0)?1:0`
+      case Op.BOOL: return emit(ast[ptr + 1])
+      case Op.BOOL_NOT: return `!${emit(ast[ptr + 1])}`
+      case Op.BOOL_TO_INT: return `${emit(ast[ptr + 1])}?1:0`
 
-      case Op.i64_lt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})?1:0`
-      case Op.i64_gt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})?1:0`
-      case Op.i64_le_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})?1:0`
-      case Op.i64_ge_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})?1:0`
+      case Op.i32_lt_u: return `(${emit(ast[ptr + 1])}>>>0)<(${emit(ast[ptr + 2])}>>>0)`
+      case Op.i32_gt_u: return `(${emit(ast[ptr + 1])}>>>0)>(${emit(ast[ptr + 2])}>>>0)`
+      case Op.i32_le_u: return `(${emit(ast[ptr + 1])}>>>0)<=(${emit(ast[ptr + 2])}>>>0)`
+      case Op.i32_ge_u: return `(${emit(ast[ptr + 1])}>>>0)>=(${emit(ast[ptr + 2])}>>>0)`
+
+      case Op.i64_lt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
+      case Op.i64_gt_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
+      case Op.i64_le_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})<=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
+      case Op.i64_ge_s: return `l.${LibFn.u64_to_i64}(${emit(ast[ptr + 1])})>=l.${LibFn.u64_to_i64}(${emit(ast[ptr + 2])})`
 
       case Op.i32_eqz: case Op.i64_eqz: return `${emit(ast[ptr + 1])}?0:1`
-      case Op.i32_eq: case Op.i64_eq: case Op.f32_eq: case Op.f64_eq: return `${emit(ast[ptr + 1])}===${emit(ast[ptr + 2])}?1:0`
-      case Op.i32_ne: case Op.i64_ne: case Op.f32_ne: case Op.f64_ne: return `${emit(ast[ptr + 1])}!==${emit(ast[ptr + 2])}?1:0`
-      case Op.i32_lt_s: case Op.i64_lt_u: case Op.f32_lt: case Op.f64_lt: return `${emit(ast[ptr + 1])}<${emit(ast[ptr + 2])}?1:0`
-      case Op.i32_gt_s: case Op.i64_gt_u: case Op.f32_gt: case Op.f64_gt: return `${emit(ast[ptr + 1])}>${emit(ast[ptr + 2])}?1:0`
-      case Op.i32_le_s: case Op.i64_le_u: case Op.f32_le: case Op.f64_le: return `${emit(ast[ptr + 1])}<=${emit(ast[ptr + 2])}?1:0`
-      case Op.i32_ge_s: case Op.i64_ge_u: case Op.f32_ge: case Op.f64_ge: return `${emit(ast[ptr + 1])}>=${emit(ast[ptr + 2])}?1:0`
+      case Op.i32_eq: case Op.i64_eq: case Op.f32_eq: case Op.f64_eq: return `${emit(ast[ptr + 1])}===${emit(ast[ptr + 2])}`
+      case Op.i32_ne: case Op.i64_ne: case Op.f32_ne: case Op.f64_ne: return `${emit(ast[ptr + 1])}!==${emit(ast[ptr + 2])}`
+      case Op.i32_lt_s: case Op.i64_lt_u: case Op.f32_lt: case Op.f64_lt: return `${emit(ast[ptr + 1])}<${emit(ast[ptr + 2])}`
+      case Op.i32_gt_s: case Op.i64_gt_u: case Op.f32_gt: case Op.f64_gt: return `${emit(ast[ptr + 1])}>${emit(ast[ptr + 2])}`
+      case Op.i32_le_s: case Op.i64_le_u: case Op.f32_le: case Op.f64_le: return `${emit(ast[ptr + 1])}<=${emit(ast[ptr + 2])}`
+      case Op.i32_ge_s: case Op.i64_ge_u: case Op.f32_ge: case Op.f64_ge: return `${emit(ast[ptr + 1])}>=${emit(ast[ptr + 2])}`
 
       case Op.i32_clz: return `Math.clz32(${emit(ast[ptr + 1])})`
       case Op.i32_ctz: return `l.${LibFn.i32_ctz}(${emit(ast[ptr + 1])})`
@@ -750,6 +775,12 @@ export const compileCode = (
     ast[ptr] = node
     astNextPtr += length
     return ptr
+  }
+
+  const pushUnary = (op: Op): void => {
+    astPtrs.push(astNextPtr)
+    ast[astNextPtr++] = op | (1 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+    ast[astNextPtr++] = -stackTop
   }
 
   const finalizeBasicBlock = (popStackTop = false): string | undefined => {
@@ -840,21 +871,6 @@ export const compileCode = (
     }
   }
 
-  const readBlockType = (): [argCount: number, returnCount: number] => {
-    const byte = bytes[bytesPtr]
-    if (byte === 0x40) {
-      bytesPtr++
-      return [0, 0]
-    }
-    if (byte & 0x40) {
-      bytesPtr++
-      return [0, 1]
-    }
-    const typeIndex = readU32LEB()
-    const [argTypes, returnTypes] = typeSection[typeIndex]
-    return [argTypes.length, returnTypes.length]
-  }
-
   // There is also a stack of blocks (i.e. labels)
   const pushBlock = (kind: BlockKind): number | null => {
     const labelBreak = nextLabel++
@@ -932,6 +948,7 @@ export const compileCode = (
           for (let i = 1; i <= childCount; i++) ast[astNextPtr++] = -(stackTop + i)
           if (flags & MetaFlag.HasIndex) ast[astNextPtr++] = readU32LEB()
           if (flags & MetaFlag.Push) stackTop++
+          if (flags & MetaFlag.BoolToInt) pushUnary(Op.BOOL_TO_INT)
         }
       } else {
         if (flags & MetaFlag.HasAlign) bytesPtr++
@@ -959,8 +976,9 @@ export const compileCode = (
           break
 
         case Op.if: {
+          if (!blocks[blocks.length - 1].isDead_) pushUnary(Op.BOOL_NOT)
           const test = finalizeBasicBlock(true)
-          body += `if(!(${test})){L=${pushBlock(BlockKind.IfElse)};continue}`
+          body += `if(${test}){L=${pushBlock(BlockKind.IfElse)};continue}`
           break
         }
 
@@ -995,6 +1013,7 @@ export const compileCode = (
           break
 
         case Op.br_if: {
+          if (!blocks[blocks.length - 1].isDead_) pushUnary(Op.BOOL)
           const test = finalizeBasicBlock(true)
           body += `if(${test}){`
           jump()
@@ -1060,6 +1079,7 @@ export const compileCode = (
         case Op.select: {
           // Note: JS evaluation order is different than WASM evaluation order here
           if (!blocks[blocks.length - 1].isDead_) {
+            pushUnary(Op.BOOL)
             stackTop -= 2
             astPtrs.push(astNextPtr)
             ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
@@ -1113,9 +1133,7 @@ export const compileCode = (
           op = bytes[bytesPtr++]
           if (op <= Op.i64_trunc_sat_f64_u) {
             if (!blocks[blocks.length - 1].isDead_) {
-              astPtrs.push(astNextPtr)
-              ast[astNextPtr++] = op | (1 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-              ast[astNextPtr++] = -stackTop
+              pushUnary(op)
             }
           } else if (op === Op.memory_copy) {
             if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination

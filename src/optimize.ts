@@ -44,6 +44,10 @@ type OpWithPayload =
   | Op.i64_store32
 
 type OpWithoutPayload =
+  | Op.BOOL
+  | Op.BOOL_NOT
+  | Op.BOOL_TO_INT
+
   | Op.i32_eqz
   | Op.i32_eq
   | Op.i32_ne
@@ -347,6 +351,51 @@ const rules: Rule[] = [
     match_: [Op.i64_ne, [Op.i64_load32_u, 'x', 'P'], [Op.i64_const, 'Q']],
     replace_: [Op.i32_ne, [Op.i32_load, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFFFFFFFn],
+  },
+
+  // Optimize boolean operations
+  {
+    match_: [Op.BOOL, 'x'],
+    nested_: {
+      'x': [
+        // "if (x ? 1 : 0)" => "if (x)"
+        { match_: [Op.BOOL_TO_INT, 'y'], replace_: [Op.BOOL, 'y'] },
+        // "if (x ? 0 : 1)" => "if (!x)"
+        { match_: [['@', Op.i32_eqz, Op.i64_eqz], 'x'], replace_: [Op.BOOL_NOT, 'y'] },
+      ],
+    },
+  },
+  {
+    match_: [Op.BOOL_NOT, 'x'],
+    nested_: {
+      'x': [
+        // "if (!(x ? 1 : 0))" => "if (!x)"
+        { match_: [Op.BOOL_TO_INT, 'y'], replace_: [Op.BOOL_NOT, 'y'] },
+        // "if (!(x ? 0 : 1)" => "if (x)"
+        { match_: [['@', Op.i32_eqz, Op.i64_eqz], 'y'], replace_: [Op.BOOL, 'y'] },
+        // "if (!(x === 0))" => "if (x !== 0)" (note: does not apply to floating-point due to NaN)
+        { match_: [Op.i32_eq, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_ne, 'y', 'z']] },
+        { match_: [Op.i32_ne, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_eq, 'y', 'z']] },
+        { match_: [Op.i32_lt_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_ge_s, 'y', 'z']] },
+        { match_: [Op.i32_lt_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_ge_u, 'y', 'z']] },
+        { match_: [Op.i32_gt_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_le_s, 'y', 'z']] },
+        { match_: [Op.i32_gt_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_le_u, 'y', 'z']] },
+        { match_: [Op.i32_le_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_gt_s, 'y', 'z']] },
+        { match_: [Op.i32_le_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_gt_u, 'y', 'z']] },
+        { match_: [Op.i32_ge_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_lt_s, 'y', 'z']] },
+        { match_: [Op.i32_ge_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i32_lt_u, 'y', 'z']] },
+        { match_: [Op.i64_eq, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_ne, 'y', 'z']] },
+        { match_: [Op.i64_ne, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_eq, 'y', 'z']] },
+        { match_: [Op.i64_lt_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_ge_s, 'y', 'z']] },
+        { match_: [Op.i64_lt_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_ge_u, 'y', 'z']] },
+        { match_: [Op.i64_gt_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_le_s, 'y', 'z']] },
+        { match_: [Op.i64_gt_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_le_u, 'y', 'z']] },
+        { match_: [Op.i64_le_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_gt_s, 'y', 'z']] },
+        { match_: [Op.i64_le_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_gt_u, 'y', 'z']] },
+        { match_: [Op.i64_ge_s, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_lt_s, 'y', 'z']] },
+        { match_: [Op.i64_ge_u, 'y', 'z'], replace_: [Op.BOOL, [Op.i64_lt_u, 'y', 'z']] },
+      ],
+    }
   },
 
   // i32_wrap_i64 removal
