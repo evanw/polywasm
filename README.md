@@ -45,6 +45,30 @@ Here are some limitations to be aware of:
 
 * **Limited API support:** This does not implement the full [WebAssembly API](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface). There's no reason it can't, but right now I have only implemented the parts of the API that I needed to be able to load and run a `.wasm` file and run the WebAssembly specification's core tests.
 
+## Performance
+
+These are the times to run a sample WebAssembly task using the polyfill. Each row is a result reported by [`bench/index.html`](./bench/index.html) for that browser.
+
+| Browser | Minimum time | Median time |
+|---|---|---|
+| Chrome | 29ms | 42ms |
+| Firefox | 79ms | 89ms |
+| Chrome (no JIT) | 125ms | 129ms |
+| Firefox (no JIT) | 145ms | 151ms |
+| Safari (no JIT) | 275ms | 287ms |
+
+These are the times for the same benchmark but with this polyfill's optimizations disabled (to demonstrate that the optimizations done by this polyfill improve run time):
+
+| Browser | Minimum time | Median time |
+|---|---|---|
+| Chrome | 46ms | 66ms |
+| Firefox | 127ms | 141ms |
+| Chrome (no JIT) | 160ms | 166ms |
+| Firefox (no JIT) | 208ms | 217ms |
+| Safari (no JIT) | 371ms | 393ms |
+
+The optimizations cause the benchmark to run 1.3x to 1.6x faster depending on the browser.
+
 ## Implementation details
 
 ### Numeric representation

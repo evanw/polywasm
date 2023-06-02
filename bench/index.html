@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      margin: 30px;
+      color: #FFF;
+      background: #333;
+      font: 14px/18px sans-serif;
+    }
+
+    code {
+      font: 13px/18px Menlo, monospace;
+      background: #555;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+
+    p {
+      position: relative;
+    }
+
+    .bar {
+      position: absolute;
+      left: 0;
+      bottom: 100%;
+      height: 5px;
+      background: #FFF;
+      max-width: 100%;
+    }
+
+  </style>
+</head>
+
+<body>
+  <h1>Benchmark</h1>
+  <p>
+    This page does an arbitrary WebAssembly task to measure the performance of this polyfill.
+    It reloads the page a few times during the benchmark to capture multiple independent runs.
+    Use it to compare the performance of the polyfill in different browsers and with different optimizations enabled.
+    Note that this benchmark requires internet access to download the sample WebAssembly module.
+  </p>
+  <div id="results">
+    <p>Use <code>npm run bench</code> to serve this page if you want to run this benchmark.</p>
+  </div>
+  <p id="summary"></p>
+  <script type="module">
+    const appendTimeToHTML = time => {
+      const timeEl = document.createElement('p')
+      timeEl.innerHTML = `<div class="bar" style="width:${time}px"></div>${time}ms`
+      resultsEl.append(timeEl)
+      loadingEl.remove()
+    }
+
+    const updateSummary = () => {
+      const sorted = times.slice().sort((a, b) => a - b)
+      const minTime = sorted[0]
+      const maxTime = sorted[sorted.length - 1]
+      const medianTime = sorted[sorted.length >> 1]
+      let meanTime = 0
+      for (const time of sorted) meanTime += time
+      meanTime = meanTime / sorted.length | 0
+      summaryEl.textContent = `
+        Min: ${minTime}ms,
+        Median: ${medianTime}ms,
+        Mean: ${meanTime}ms,
+        Max: ${maxTime}ms
+      `
+    }
+
+    const polywasmJS = await fetch(`./polywasm.min.js`).then(r => r.text())
+    const resultsEl = document.getElementById('results')
+    const summaryEl = document.getElementById('summary')
+    const loadingEl = document.createElement('p')
+    loadingEl.textContent = 'Loading...'
+    resultsEl.innerHTML = ''
+
+    const times = sessionStorage.getItem('times') ? JSON.parse(sessionStorage.getItem('times')) : []
+    if (times.length) {
+      for (const time of times) appendTimeToHTML(time)
+      updateSummary()
+    }
+    resultsEl.append(loadingEl)
+    scrollTo(0, document.body.scrollHeight)
+    setTimeout(() => scrollTo(0, document.body.scrollHeight))
+
+    const packageFetch = async subpath => {
+      // Try to fetch from one CDN, but fall back to another CDN if that fails
+      try {
+        const response = await fetch(`https://cdn.jsdelivr.net/npm/${subpath}`)
+        if (response.ok) return response
+      } catch {
+      }
+      return fetch(`https://unpkg.com/${subpath}`)
+    }
+    const [esbuildJS, esbuildWASM] = await Promise.all([
+      packageFetch(`esbuild-wasm@0.17.19/lib/browser.min.js`).then(r => r.text()),
+      packageFetch(`esbuild-wasm@0.17.19/esbuild.wasm`).then(r => r.arrayBuffer()),
+    ])
+
+    const worker = await new Promise(resolve => {
+      const workerJS = `
+        globalThis.WebAssembly = polywasm.WebAssembly
+        onmessage = e => {
+          esbuild.initialize({
+            wasmModule: new WebAssembly.Module(e.data),
+            worker: false,
+          }).then(() => {
+            postMessage('ready')
+            onmessage = ({ data }) => {
+              const start = Date.now()
+              esbuild.transform(data.input, data.options).then(result => {
+                result.time = Date.now() - start
+                postMessage(result)
+              })
+            }
+          })
+        }
+      `
+      const parts = [esbuildJS, polywasmJS, workerJS]
+      const url = URL.createObjectURL(new Blob(parts, { type: 'application/javascript' }))
+      const worker = new Worker(url, { type: 'module' })
+      worker.onmessage = e => {
+        if (e.data === 'ready') {
+          resolve(worker)
+          URL.revokeObjectURL(url)
+        }
+      }
+      worker.postMessage(esbuildWASM, [esbuildWASM])
+    })
+
+    // This is some arbitrary TypeScript code to use as a benchmark
+    const input = `
+      export const enum ContextField {
+        PageCount = 'pc',
+        PageGrow = 'pg',
+
+        // These are reset when the memory grows
+        Int8Array = 'i8',
+        Uint8Array = 'u8',
+        DataView = 'dv',
+      }
+
+      export class Context {
+        declare memory_: Memory
+        declare pageLimit_: number
+        declare [ContextField.PageCount]: number
+        declare [ContextField.PageGrow]: (pagesDelta: number) => number
+
+        // These are reset when the memory grows
+        declare [ContextField.Int8Array]: Int8Array
+        declare [ContextField.Uint8Array]: Uint8Array
+        declare [ContextField.DataView]: DataView
+      }
+
+      const resetContext = (context: Context, buffer: ArrayBuffer, bytes = new Uint8Array(buffer)): void => {
+        context[ContextField.Int8Array] = new Int8Array(buffer)
+        context[ContextField.Uint8Array] = bytes
+        context[ContextField.DataView] = new DataView(buffer)
+      }
+
+      const growContext = (context: Context, pagesDelta: number): number => {
+        const pageCount = context[ContextField.PageCount]
+        pagesDelta >>>= 0
+        if (pageCount + pagesDelta > context.pageLimit_) return -1
+        if (pagesDelta) {
+          const buffer = context.memory_.buffer = new ArrayBuffer((context[ContextField.PageCount] += pagesDelta) << 16)
+          const bytes = new Uint8Array(buffer)
+          bytes.set(context[ContextField.Uint8Array])
+          resetContext(context, buffer, bytes)
+        }
+        return pageCount
+      }
+    `
+
+    const options = {
+      loader: 'ts',
+      minify: true,
+    }
+
+    for (let i = 0; i < 20; i++) {
+      const result = await new Promise(resolve => {
+        worker.onmessage = e => resolve(e.data)
+        worker.postMessage({ input, options })
+      })
+      times.push(result.time)
+      appendTimeToHTML(result.time)
+      updateSummary()
+      scrollTo(0, document.body.scrollHeight)
+    }
+    if (times.length < 100) {
+      sessionStorage.setItem('times', JSON.stringify(times))
+      location.reload()
+    } else {
+      sessionStorage.removeItem('times')
+      resultsEl.append(document.createTextNode('Done'))
+      scrollTo(0, document.body.scrollHeight)
+    }
+  </script>
+</body>
+
+</html>

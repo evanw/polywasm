@@ -10,7 +10,8 @@
     "url": "https://github.com/evanw/polywasm.git"
   },
   "scripts": {
-    "build": "esbuild --bundle --target=es2020 src/index.ts --outfile=index.js --format=esm \"--mangle-props=_$\" && esbuild --bundle --target=es2020 src/index.ts --outfile=index.min.js --format=esm \"--mangle-props=_$\" --minify",
+    "build": "esbuild --bundle --target=es2020 src/index.ts \"--mangle-props=_$\" --minify --outfile=index.min.js --format=esm && esbuild --bundle --target=es2020 src/index.ts --outfile=index.js \"--mangle-props=_$\" --format=esm",
+    "bench": "esbuild --bundle --target=es2020 src/index.ts \"--mangle-props=_$\" --minify --outfile=bench/polywasm.min.js --servedir=bench --global-name=polywasm",
     "check": "tsc -noEmit -p src",
     "test": "node test/run.js"
   },
