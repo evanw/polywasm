@@ -174,7 +174,12 @@ export class Instance {
       if (tables.length !== 1) throw new Error('Multiple tables are unsupported')
       const table = tables[0]
       for (const index of indices) {
-        table[offset++] = (...args: any[]): any => funcs[index](...args)
+        const i = offset++
+        table[i] = (...args: any[]): any => {
+          const result = funcs[index](...args) // Compile the function for the first time
+          table[i] = funcs[index] // Overwrite ourselves with the newly-compiled function
+          return result
+        }
       }
     }
 
