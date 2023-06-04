@@ -336,6 +336,10 @@ const parse = (bytes: Uint8Array): WASM => {
       }
     }
 
+    else if (sectionType === Section.DataCount) {
+      // This section is not used...
+    }
+
     else {
       throw new Error('Unsupported section type ' + sectionType)
     }
