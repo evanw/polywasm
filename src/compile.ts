@@ -876,7 +876,7 @@ export const compileCode = (
   }
 
   // The next set of names are the locals
-  const decls: string[] = ['L=1', 'T']
+  const decls: string[] = ['L', 'T']
   for (const [count, type] of locals) {
     for (let i = 0; i < count; i++) {
       const name = 't' + decls.length
@@ -885,10 +885,113 @@ export const compileCode = (
     }
   }
 
-  // There is also a stack of blocks (i.e. labels)
-  const pushBlock = (kind: BlockKind): number | null => {
-    const labelBreak = nextLabel++
-    const labelContinueOrElse = kind !== BlockKind.Normal ? nextLabel++ : 0
+  // WebAssembly uses "blocks" to represent structured control flow instead of
+  // labels like traditional assembly language. All WebAssembly code is inside
+  // of one or more blocks (the outermost block is implicit), which we keep
+  // track of during compilation using a stack.
+  //
+  // Using the WebAssembly "br" opcode jumps to the end of the block unless
+  // that block is a loop, in which case it jumps to the beginning. So you can
+  // think of WebAssembly blocks as having a label (in the assembly language
+  // sense) at the end of the block for normal blocks, and at the beginning of
+  // the block for a loop.
+  //
+  // Here's an example (using the textual WebAssembly S-expression syntax):
+  //
+  //   (block
+  //     call foo
+  //     (block
+  //       (local.get 0)
+  //       (if (then
+  //         (br 2)
+  //       ))
+  //       (call bar)
+  //       (br 1)
+  //     )
+  //     call baz
+  //   )
+  //
+  // We use two different strategies to compile blocks them to JavaScript:
+  //
+  //   1) Translate WASM blocks to JS blocks
+  //
+  //      WebAssembly blocks behave similarly to JavaScript labeled statements,
+  //      so the translation is straightforward. A normal WebAssembly block
+  //      becomes a JavaScript labeled block, and a WebAssembly break becomes
+  //      a JavaScript labeled break statement. So the above example would be
+  //      translated like this:
+  //
+  //      b1: {
+  //        foo();
+  //        b2: {
+  //          if (local_0) {
+  //            break b2;
+  //          }
+  //          bar();
+  //          break b1;
+  //        }
+  //        baz();
+  //      }
+  //
+  //      A WebAssembly loop is translated to a JavaScript labeled while-true
+  //      loop and a WebAssembly break of a loop becomes a JavaScript labeled.
+  //      continue statement.
+  //
+  //   2) Translate WASM blocks to JS switch-case
+  //
+  //      Jumps in WebAssembly can also be simulated with a JavaScript switch
+  //      statement inside a loop, with "case" statements as labels. Jumping
+  //      to a label (which is essentially a simulated "goto") involves setting
+  //      the label variable to the jump target and continuing the loop. So the
+  //      above example would be translated like this:
+  //
+  //      var L = 1;
+  //      for (;;) {
+  //        switch (L) {
+  //          case 1:
+  //            foo();
+  //            if (local_0) {
+  //              L = 2;
+  //              continue;
+  //            }
+  //            bar();
+  //            L = 3;
+  //            continue;
+  //          case 2:
+  //            baz();
+  //          case 3:
+  //        }
+  //        break;
+  //      }
+  //
+  // The first strategy is more efficient because there is zero overhead for
+  // JavaScript-native branching. However, using nested JavaScript blocks means
+  // the JavaScript VM will at some point refuse to compile code with too many
+  // levels of nested scopes. This happens in all browsers (Chrome, Firefox,
+  // and Safari).
+  //
+  // The second strategy is less efficient because it uses a JavaScript local
+  // variable to store the "goto" target, and because "case" statements involve
+  // an equality comparison. A VM could special-case this pattern to remove the
+  // overhead, but not all VMs do this. However, it uses a constant number of
+  // JavaScript scopes (one for the loop and one for the switch) so large
+  // WebAssembly functions don't fail to compile due to JavaScript VM nested
+  // scope limitations.
+  //
+  // We blend both strategies by using the first translation strategy until a
+  // maximum scope depth is reached, at which point we switch over to using
+  // the second translation strategy.
+  const blockDepthLimit = 256
+  const pushBlock = (kind: BlockKind): number => {
+    const isBelowLimit = blocks.length < blockDepthLimit
+    if (isBelowLimit) {
+      body += `b${blocks.length}:`
+    } else if (blocks.length === blockDepthLimit) {
+      body += `L=1;b${blocks.length}:for(;;){switch(L){case 1:`
+      nextLabel = 2
+    }
+    const labelBreak = isBelowLimit ? -1 : nextLabel++
+    const labelContinueOrElse = isBelowLimit ? -1 : kind !== BlockKind.Normal ? nextLabel++ : 0
     const [argCount, returnCount] = readBlockType()
     blocks.push({
       argCount_: argCount,
@@ -910,22 +1013,22 @@ export const compileCode = (
           body += `s${block.parentStackTop_ + i}=s${stackTop - block.argCount_ + i};`
         }
       }
-      body += `L=${block.labelContinueOrElse_};continue;`
+      body += index < blockDepthLimit ? `continue b${index};` : `L=${block.labelContinueOrElse_};continue;`
     } else {
       if (stackTop > block.parentStackTop_ + block.returnCount_) {
         for (let i = 1; i <= block.returnCount_; i++) {
           body += `s${block.parentStackTop_ + i}=s${stackTop - block.returnCount_ + i};`
         }
       }
-      body += `L=${block.labelBreak_};continue;`
+      body += index <= blockDepthLimit ? `break b${index};` : `L=${block.labelBreak_};continue;`
     }
   }
   const blocks: Block[] = [{
     argCount_: 0,
     isDead_: false,
     kind_: BlockKind.Normal,
-    labelBreak_: 0,
-    labelContinueOrElse_: 0,
+    labelBreak_: -1,
+    labelContinueOrElse_: -1,
     parentStackTop_: 0,
     returnCount_: returnTypes.length,
   }]
@@ -934,16 +1037,10 @@ export const compileCode = (
   // first stack slot is 1 because slot 0 means "no stack slot".
   let stackTop = 0
 
-  // Each function is compiled into a switch statement that emulates control
-  // flow between basic blocks using a manual label variable. I originally used
-  // native JavaScript labels and the "break <label>" syntax, but that caused
-  // stack overflows in multiple JavaScript VMs for the deeply-nested ASTs that
-  // the "br_table" opcode generates. In addition, the current switch statement
-  // approach was strangely faster than the native JavaScript label approach in
-  // V8. So it doesn't seem like too much of a problem.
+  // Scan over WebAssembly opcodes and compile them to JavaScript as we go
   let bytesPtr = codeStart
-  let nextLabel = 2
-  let body = 'for(;L;){switch(L){case 1:'
+  let nextLabel = 0
+  let body = 'b0:{'
 
   while (bytesPtr < codeEnd) {
     let op = bytes[bytesPtr++]
@@ -996,18 +1093,23 @@ export const compileCode = (
 
         case Op.block:
           finalizeBasicBlock()
-          pushBlock(BlockKind.Normal)
+          if (pushBlock(BlockKind.Normal) < 0) body += '{'
           break
 
-        case Op.loop:
+        case Op.loop: {
           finalizeBasicBlock()
-          body += `case ${pushBlock(BlockKind.Loop)}:`
+          const label = pushBlock(BlockKind.Loop)
+          body += label < 0 ? 'for(;;){' : `case ${label}:`
           break
+        }
 
         case Op.if: {
-          if (!blocks[blocks.length - 1].isDead_) pushUnary(Op.BOOL_NOT)
+          if (!blocks[blocks.length - 1].isDead_) {
+            pushUnary(blocks.length < blockDepthLimit ? Op.BOOL : Op.BOOL_NOT)
+          }
           const test = finalizeBasicBlock(true)
-          body += `if(${test}){L=${pushBlock(BlockKind.IfElse)};continue}`
+          const label = pushBlock(BlockKind.IfElse)
+          body += label < 0 ? `if(${test}){` : `if(${test}){L=${label};continue}`
           break
         }
 
@@ -1015,7 +1117,7 @@ export const compileCode = (
           finalizeBasicBlock()
           const index = blocks.length - 1, block = blocks[index]
           jump(index)
-          body += `case ${block.labelContinueOrElse_}:`
+          body += index < blockDepthLimit ? '}else{' : `case ${block.labelContinueOrElse_}:`
           block.kind_ = BlockKind.Normal // Don't emit the "else" label on "end"
           stackTop = block.parentStackTop_ + block.argCount_
           block.isDead_ = false
@@ -1028,8 +1130,13 @@ export const compileCode = (
           if (block.kind_ !== BlockKind.IfElse) block.labelContinueOrElse_ = 0 // Emit the "else" label if there was no "else" branch
           block.kind_ = BlockKind.Normal // Emit "break" not "continue"
           jump(index)
-          if (block.labelContinueOrElse_) body += `case ${block.labelContinueOrElse_}:`
-          body += `case ${block.labelBreak_}:`
+          if (index < blockDepthLimit) {
+            body += `}`
+          } else {
+            if (block.labelContinueOrElse_) body += `case ${block.labelContinueOrElse_}:`
+            body += `case ${block.labelBreak_}:`
+            if (index == blockDepthLimit) body += `}break}`
+          }
           stackTop = block.parentStackTop_ + block.returnCount_
           blocks.pop()
           break
@@ -1196,8 +1303,8 @@ export const compileCode = (
     }
   }
 
+  // Each node only has 8 bits of storage for the output stack slot
   if (stackLimit > 255) throw new Error('Deep stacks are not supported')
-  body += '}}'
 
   // Emit a single return statement at the end of the function
   if (returnTypes.length === 1) {
