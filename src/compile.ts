@@ -1007,7 +1007,19 @@ export const compileCode = (
   const jump = (index = blocks.length - readU32LEB() - 1): void => {
     if (blocks[blocks.length - 1].isDead_) return
     const block = blocks[index]
-    if (block.kind_ === BlockKind.Loop) {
+    if (!index) {
+      // Jumping to block 0 means returning from the function
+      if (block.returnCount_ === 1) {
+        body += `return s${stackTop};`
+      } else if (block.returnCount_ > 1) {
+        const values: string[] = []
+        for (let i = block.returnCount_ - 1; i >= 0; i--) values.push('s' + (stackTop - i))
+        body += `return[${values}];`
+      } else {
+        body += `return;`
+      }
+    } else if (block.kind_ === BlockKind.Loop) {
+      // Jumping to a loop means jumping to the start of the loop
       if (stackTop > block.parentStackTop_ + block.argCount_) {
         for (let i = 1; i <= block.argCount_; i++) {
           body += `s${block.parentStackTop_ + i}=s${stackTop - block.argCount_ + i};`
@@ -1015,6 +1027,7 @@ export const compileCode = (
       }
       body += index < blockDepthLimit ? `continue b${index};` : `L=${block.labelContinueOrElse_};continue;`
     } else {
+      // Jumping to a block means jumping to the end of the block
       if (stackTop > block.parentStackTop_ + block.returnCount_) {
         for (let i = 1; i <= block.returnCount_; i++) {
           body += `s${block.parentStackTop_ + i}=s${stackTop - block.returnCount_ + i};`
@@ -1305,15 +1318,6 @@ export const compileCode = (
 
   // Each node only has 8 bits of storage for the output stack slot
   if (stackLimit > 255) throw new Error('Deep stacks are not supported')
-
-  // Emit a single return statement at the end of the function
-  if (returnTypes.length === 1) {
-    body += `return s${stackTop};`
-  } else if (returnTypes.length > 1) {
-    const values: string[] = []
-    for (let i = returnTypes.length - 1; i >= 0; i--) values.push('s' + (stackTop - i))
-    body += `return[${values}];`
-  }
 
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
