@@ -529,10 +529,6 @@ const rules: Rule[] = [
 // code that does the subtree matching and replacement. This only needs to be
 // done once. The rules are compiled instead of interpreted to improve compile
 // speed, as these rules are applied to every node that the compiler generates.
-//
-// Note: If this function returns a negative number, then the returned pointer
-// is the 2's complement of the number and the optimization function should be
-// called again. Optimizations are iterated until a fixed point is reached.
 export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], allocateNode: (node: number, length: number) => number, ptr: number) => number => {
   type PlaceholderMap = Partial<Record<Expr | Payload, string>>
 
