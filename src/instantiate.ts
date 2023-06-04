@@ -52,9 +52,16 @@ const growContext = (context: Context, pagesDelta: number): number => {
   if (pageCount + pagesDelta > context.pageLimit_) return -1
   if (pagesDelta) {
     const buffer = context.memory_.buffer = new ArrayBuffer((context[ContextField.PageCount] += pagesDelta) << 16)
+    const oldBytes = context[ContextField.Uint8Array]
     const bytes = new Uint8Array(buffer)
-    bytes.set(context[ContextField.Uint8Array])
+    bytes.set(oldBytes)
     resetContext(context, buffer, bytes)
+
+    // Try to detach the old buffer to mimic the real behavior of "grow"
+    try {
+      structuredClone(oldBytes.buffer, { transfer: [oldBytes.buffer] })
+    } catch {
+    }
   }
   return pageCount
 }
@@ -166,28 +173,48 @@ export class Instance {
     for (let [offset, indices] of elementSection) {
       if (tables.length !== 1) throw new Error('Multiple tables are unsupported')
       const table = tables[0]
-      for (const index of indices) table[offset++] = (...args: any[]): any => funcs[index](...args)
+      for (const index of indices) {
+        table[offset++] = (...args: any[]): any => funcs[index](...args)
+      }
     }
 
     // Handle exports
+    const exportFunc = (index: number): Function => {
+      const [argTypes, returnTypes] = funcTypes[index]
+      const argNames: string[] = []
+      const argExprs: string[] = []
+      for (let i = 0; i < argTypes.length; i++) {
+        argNames.push('a' + i)
+        argExprs.push(castToWASM('a' + i, argTypes[i]))
+      }
+      let result = `f[i](${argExprs})`
+      if (returnTypes.length === 1) {
+        result = 'return ' + castToJS(result, returnTypes[0])
+      } else if (returnTypes.length > 1) {
+        result = `let r=${result};`
+        for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToJS(`r[${i}]`, returnTypes[i])};`
+        result += 'return r'
+      }
+      return new Function('f', 'i', 'l', `return(${argNames})=>{${result}}`)(funcs, index, library)
+    }
     for (const [name, desc, index] of exportSection) {
       if (desc === Desc.Func) {
-        const [argTypes, returnTypes] = funcTypes[index]
-        const argNames: string[] = []
-        const argExprs: string[] = []
-        for (let i = 0; i < argTypes.length; i++) {
-          argNames.push('a' + i)
-          argExprs.push(castToWASM('a' + i, argTypes[i]))
+        exports[name] = exportFunc(index)
+      } else if (desc === Desc.Table) {
+        const funcs: (Function | null)[] = []
+        for (let [offset, indices] of elementSection) {
+          for (const index of indices) {
+            funcs[offset++] = exportFunc(index)
+          }
         }
-        let result = `f[i](${argExprs})`
-        if (returnTypes.length === 1) {
-          result = 'return ' + castToJS(result, returnTypes[0])
-        } else if (returnTypes.length > 1) {
-          result = `let r=${result};`
-          for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToJS(`r[${i}]`, returnTypes[i])};`
-          result += 'return r'
-        }
-        exports[name] = new Function('f', 'i', 'l', `return(${argNames})=>{${result}}`)(funcs, index, library)
+        const value = new Table
+        Object.defineProperty(value, 'length', {
+          get: () => funcs.length,
+        })
+        value.get = i => funcs[i]
+        value.grow = () => { throw new Error(`Unsupported operation "grow" on table ${index}`) }
+        value.set = () => { throw new Error(`Unsupported operation "set" on table ${index}`) }
+        exports[name] = value
       } else if (desc === Desc.Mem) {
         exports[name] = memory
       } else if (desc === Desc.Global) {
