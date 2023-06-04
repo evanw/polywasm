@@ -797,8 +797,16 @@ export const compileCode = (
           const prevPtr = astPtrs[k]
           if (prevPtr === null) continue
 
-          // If this load is from the previous store, inline the node
+          // If this load is from the previous store, inline the node. Do not
+          // inline "memory_grow" opcodes as these mutate our typed array views
+          // which should not happen in the middle of an expression. Note that
+          // this doesn't fully prevent issues due to memory growth as our
+          // callers might still be in the middle of an expression. If it turns
+          // out that that's important for correctness, then we must avoid
+          // inlining into all load and store expressions.
           const prevNode = ast[prevPtr]
+          const prevOp = prevNode & Pack.OpMask
+          if (prevOp === Op.memory_grow) break
           if ((prevNode >>> Pack.OutSlotShift) === stackSlot) {
             astPtrs[k] = null // Prevent inlined nodes from being emitted at the top level
             if (!didSkip) i = k - 1 // No need to re-scan these nodes
@@ -811,7 +819,6 @@ export const compileCode = (
           // mutates a single stack slot in place). This is done for these sign
           // conversion opcodes because we generate them immediately before the
           // parent opcode, and they would prevent inlining if we don't do this.
-          const prevOp = prevNode & Pack.OpMask
           if (prevOp !== Op.TO_U32 && prevOp !== Op.TO_S64) break
           didSkip = true
         }
