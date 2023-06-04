@@ -1098,11 +1098,15 @@ export const compileCode = (
     // A few opcodes need special handling and can't be decoded with a table
     else {
       switch (op) {
-        case Op.unreachable:
+        case Op.unreachable: {
+          const block = blocks[blocks.length - 1]
           finalizeBasicBlock()
-          body += '"unreachable"();'
-          blocks[blocks.length - 1].isDead_ = true
+          if (!block.isDead_) {
+            body += '"unreachable"();'
+            block.isDead_ = true
+          }
           break
+        }
 
         case Op.block:
           finalizeBasicBlock()
