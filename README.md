@@ -51,23 +51,23 @@ These are the times to run a sample WebAssembly task using the polyfill. Each ro
 
 | Browser | Minimum time | Median time |
 |---|---|---|
-| Chrome | 29ms | 42ms |
-| Firefox | 79ms | 89ms |
-| Chrome (no JIT) | 125ms | 129ms |
-| Firefox (no JIT) | 145ms | 151ms |
-| Safari (no JIT) | 275ms | 287ms |
+| Chrome (JIT) | 27ms | 37ms |
+| Firefox (JIT) | 79ms | 88ms |
+| Chrome (no JIT) | 94ms | 97ms |
+| Firefox (no JIT) | 127ms | 133ms |
+| Safari (no JIT) | 244ms | 256ms |
 
 These are the times for the same benchmark but with this polyfill's optimizations disabled (to demonstrate that the optimizations done by this polyfill improve run time):
 
 | Browser | Minimum time | Median time |
 |---|---|---|
-| Chrome | 46ms | 66ms |
-| Firefox | 127ms | 141ms |
-| Chrome (no JIT) | 160ms | 166ms |
-| Firefox (no JIT) | 208ms | 217ms |
-| Safari (no JIT) | 371ms | 393ms |
+| Chrome (JIT) | 40ms | 55ms |
+| Firefox (JIT) | 132ms | 150ms |
+| Chrome (no JIT) | 131ms | 137ms |
+| Firefox (no JIT) | 188ms | 196ms |
+| Safari (no JIT) | 332ms | 354ms |
 
-The optimizations cause the benchmark to run 1.3x to 1.6x faster depending on the browser.
+The optimizations cause the benchmark to run 1.4x to 1.7x faster depending on the browser.
 
 ## Implementation details
 
