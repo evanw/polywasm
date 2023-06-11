@@ -247,14 +247,14 @@ interface Block {
 export const liveCastToWASM = (value: any, type: Type): number | bigint => {
   if (type === Type.F32 || type === Type.F64) return +value
   if (type === Type.I32) return value | 0
-  if (type === Type.I64) return BigInt(value) & 0xFFFF_FFFF_FFFF_FFFFn
+  if (type === Type.I64) return BigInt.asUintN(64, BigInt(value))
   throw new Error('Unsupported cast to type ' + type)
 }
 
 export const castToWASM = (code: string, type: Type): string => {
   if (type === Type.F32 || type === Type.F64) return '+' + code
   if (type === Type.I32) return code + '|0'
-  if (type === Type.I64) return `BigInt(${code})&0xFFFFFFFFFFFFFFFFn`
+  if (type === Type.I64) return `BigInt.asUintN(64, BigInt(${code}))`
   throw new Error('Unsupported cast to type ' + type)
 }
 

@@ -30,16 +30,14 @@ export const createLibrary = () => {
   const f32 = new Float32Array(buffer)
   const f64 = new Float64Array(buffer)
   const i32 = new Int32Array(buffer)
-  const i64 = new BigInt64Array(buffer)
   const u64 = new BigUint64Array(buffer)
 
   return {
     [LibFn.copysign](x: number, y: number): number {
-      return (x < 0 || (x === 0 && Object.is(x, -0))) !== (y < 0 || (y === 0 && Object.is(y, -0))) ? -x : x
+      return y ? Math.abs(x) * Math.sign(y) : (f64[0] = y, i32[1] >>> 31 ? -1 : 1)
     },
     [LibFn.u64_to_s64](x: bigint): bigint {
-      u64[0] = x
-      return i64[0]
+      return BigInt.asIntN(64, x)
     },
     [LibFn.i32_reinterpret_f32](x: number): number {
       f32[0] = x
@@ -72,15 +70,12 @@ export const createLibrary = () => {
       return (x >> y | x << 64n - y) & 0xFFFF_FFFF_FFFF_FFFFn
     },
     [LibFn.i32_ctz](x: number): number {
-      return x ? Math.clz32(x & -x) ^ 31 : 32
+      return 32 - Math.clz32(~x & (x - 1))
     },
     [LibFn.i32_popcnt](x: number): number {
-      let count = 0
-      while (x) {
-        count++
-        x &= x - 1
-      }
-      return count
+      x -= x >>> 1 & 0x5555_5555
+      x = (x & 0x3333_3333) + (x >>> 2 & 0x3333_3333)
+      return (((x + (x >>> 4)) & 0x0F0F_0F0F) * 0x0101_0101) >>> 24
     },
     [LibFn.i64_clz](x: bigint): bigint {
       let count = Math.clz32(Number((x >> 32n) & 0xFFFF_FFFFn))
@@ -91,7 +86,7 @@ export const createLibrary = () => {
       let y = Number(x & 0xFFFF_FFFFn)
       if (y) return BigInt(Math.clz32(y & -y) ^ 31)
       y = Number((x >> 32n) & 0xFFFF_FFFFn)
-      return y ? BigInt(32 + Math.clz32(y & -y) ^ 31) : 64n
+      return BigInt(32 - Math.clz32(~y & (y - 1)))
     },
     [LibFn.i64_popcnt](x: bigint): bigint {
       let count = 0n
@@ -118,7 +113,7 @@ export const createLibrary = () => {
       return x >= 0x7FFF_FFFF_FFFF_FFFF ? 0x7FFF_FFFF_FFFF_FFFFn :
         x <= -0x8000_0000_0000_0000 ? 0x8000_0000_0000_0000n :
           x === x ?
-            BigInt(x) & 0xFFFF_FFFF_FFFF_FFFFn :
+            BigInt.asIntN(64, BigInt(x)) :
             0n // NaN must become 0
     },
     [LibFn.i64_trunc_sat_u](x: number): bigint {
