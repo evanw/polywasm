@@ -16,7 +16,7 @@
     "test": "node test/run.js"
   },
   "devDependencies": {
-    "esbuild": "0.17.19",
-    "typescript": "5.0.4"
+    "esbuild": "0.18.7",
+    "typescript": "5.1.3"
   }
 }
