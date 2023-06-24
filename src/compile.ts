@@ -2,7 +2,7 @@
 // it to JavaScript. Functions are compiled lazily when they are first evaluated.
 
 import { Context, ContextField } from './instantiate'
-import { LibFn, Library } from './library'
+import { Library } from './library'
 import { compileOptimizations } from './optimize'
 import { FuncType, Type, WASM } from './parse'
 
@@ -261,7 +261,7 @@ export const castToWASM = (code: string, type: Type): string => {
 export const castToJS = (code: string, type: Type): string => {
   if (type === Type.F64 || type === Type.I32) return code
   if (type === Type.F32) return `Math.fround(${code})`
-  if (type === Type.I64) return `l.${LibFn.u64_to_s64}(${code})`
+  if (type === Type.I64) return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${code})`
   throw new Error('Unsupported cast to type ' + type)
 }
 
@@ -594,14 +594,14 @@ export const compileCode = (
     const node = ast[ptr]
 
     switch (node & Pack.OpMask) {
-      case Op.i32_trunc_sat_f32_s: return `l.${LibFn.i32_trunc_sat_s}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f32_u: return `l.${LibFn.i32_trunc_sat_u}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f64_s: return `l.${LibFn.i32_trunc_sat_s}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f64_u: return `l.${LibFn.i32_trunc_sat_u}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f32_s: return `l.${LibFn.i64_trunc_sat_s}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f32_u: return `l.${LibFn.i64_trunc_sat_u}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f64_s: return `l.${LibFn.i64_trunc_sat_s}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f64_u: return `l.${LibFn.i64_trunc_sat_u}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
       case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
@@ -685,7 +685,7 @@ export const compileCode = (
       case Op.BOOL_NOT: return `!${emit(ast[ptr + 1])}`
       case Op.BOOL_TO_INT: return `${emit(ast[ptr + 1])}?1:0`
       case Op.TO_U32: return `${emit(ast[ptr + 1])}>>>0`
-      case Op.TO_S64: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})`
+      case Op.TO_S64: return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${emit(ast[ptr + 1])})`
 
       case Op.i32_eqz: case Op.i64_eqz: return `${emit(ast[ptr + 1])}?0:1`
       case Op.i32_eq: case Op.i64_eq: case Op.f32_eq: case Op.f64_eq: return `${emit(ast[ptr + 1])}===${emit(ast[ptr + 2])}`
@@ -696,8 +696,8 @@ export const compileCode = (
       case Op.i32_ge_s: case Op.i32_ge_u: case Op.i64_ge_s: case Op.i64_ge_u: case Op.f32_ge: case Op.f64_ge: return `${emit(ast[ptr + 1])}>=${emit(ast[ptr + 2])}`
 
       case Op.i32_clz: return `Math.clz32(${emit(ast[ptr + 1])})`
-      case Op.i32_ctz: return `l.${LibFn.i32_ctz}(${emit(ast[ptr + 1])})`
-      case Op.i32_popcnt: return `l.${LibFn.i32_popcnt}(${emit(ast[ptr + 1])})`
+      case Op.i32_ctz: return `l.${/* @__KEY__ */ 'i32_ctz_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_popcnt: return `l.${/* @__KEY__ */ 'i32_popcnt_'}(${emit(ast[ptr + 1])})`
       case Op.i32_add: return `${emit(ast[ptr + 1])}+${emit(ast[ptr + 2])}|0`
       case Op.i32_sub: return `${emit(ast[ptr + 1])}-${emit(ast[ptr + 2])}|0`
       case Op.i32_mul: return `Math.imul(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
@@ -709,12 +709,12 @@ export const compileCode = (
       case Op.i32_shl: return `${emit(ast[ptr + 1])}<<${emit(ast[ptr + 2])}`
       case Op.i32_shr_s: return `${emit(ast[ptr + 1])}>>${emit(ast[ptr + 2])}`
       case Op.i32_shr_u: return `${emit(ast[ptr + 1])}>>>${emit(ast[ptr + 2])}|0`
-      case Op.i32_rotl: return `l.${LibFn.i32_rotl}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
-      case Op.i32_rotr: return `l.${LibFn.i32_rotr}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
+      case Op.i32_rotl: return `l.${/* @__KEY__ */ 'i32_rotl_'}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
+      case Op.i32_rotr: return `l.${/* @__KEY__ */ 'i32_rotr_'}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
 
-      case Op.i64_clz: return `l.${LibFn.i64_clz}(${emit(ast[ptr + 1])})`
-      case Op.i64_ctz: return `l.${LibFn.i64_ctz}(${emit(ast[ptr + 1])})`
-      case Op.i64_popcnt: return `l.${LibFn.i64_popcnt}(${emit(ast[ptr + 1])})`
+      case Op.i64_clz: return `l.${/* @__KEY__ */ 'i64_clz_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_ctz: return `l.${/* @__KEY__ */ 'i64_ctz_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_popcnt: return `l.${/* @__KEY__ */ 'i64_popcnt_'}(${emit(ast[ptr + 1])})`
       case Op.i64_add: return `(${emit(ast[ptr + 1])}+${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_sub: return `(${emit(ast[ptr + 1])}-${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_mul: return `(${emit(ast[ptr + 1])}*${emit(ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
@@ -726,10 +726,10 @@ export const compileCode = (
       case Op.i64_or: return `${emit(ast[ptr + 1])}|${emit(ast[ptr + 2])}`
       case Op.i64_xor: return `${emit(ast[ptr + 1])}^${emit(ast[ptr + 2])}`
       case Op.i64_shl: return `${emit(ast[ptr + 1])}<<${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_shr_s: return `l.${LibFn.u64_to_s64}(${emit(ast[ptr + 1])})>>${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_shr_s: return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${emit(ast[ptr + 1])})>>${emit(ast[ptr + 2])}&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_shr_u: return `${emit(ast[ptr + 1])}>>${emit(ast[ptr + 2])}`
-      case Op.i64_rotl: return `l.${LibFn.i64_rotl}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
-      case Op.i64_rotr: return `l.${LibFn.i64_rotr}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
+      case Op.i64_rotl: return `l.${/* @__KEY__ */ 'i64_rotl_'}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
+      case Op.i64_rotr: return `l.${/* @__KEY__ */ 'i64_rotr_'}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
 
       case Op.f32_abs: case Op.f64_abs: return `Math.abs(${emit(ast[ptr + 1])})`
       case Op.f32_neg: case Op.f64_neg: return `-${emit(ast[ptr + 1])}`
@@ -744,7 +744,7 @@ export const compileCode = (
       case Op.f32_div: case Op.f64_div: return `${emit(ast[ptr + 1])}/${emit(ast[ptr + 2])}`
       case Op.f32_min: case Op.f64_min: return `Math.min(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
       case Op.f32_max: case Op.f64_max: return `Math.max(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
-      case Op.f32_copysign: case Op.f64_copysign: return `l.${LibFn.copysign}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
+      case Op.f32_copysign: case Op.f64_copysign: return `l.${/* @__KEY__ */ 'copysign_'}(${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
 
       case Op.i32_wrap_i64: return `Number(${emit(ast[ptr + 1])}&0xFFFFFFFFn)|0`
       case Op.i32_trunc_f32_s: case Op.i32_trunc_f32_u: case Op.i32_trunc_f64_s: case Op.i32_trunc_f64_u: return `Math.trunc(${emit(ast[ptr + 1])})|0`
@@ -752,16 +752,16 @@ export const compileCode = (
       case Op.i64_extend_i32_u: return `BigInt(${emit(ast[ptr + 1])}>>>0)`
       case Op.i64_trunc_f32_s: case Op.i64_trunc_f32_u: case Op.i64_trunc_f64_s: case Op.i64_trunc_f64_u: return `BigInt(Math.trunc(${emit(ast[ptr + 1])}))&0xFFFFFFFFFFFFFFFFn`
       case Op.f32_convert_i64_s: case Op.f32_convert_i64_u: case Op.f64_convert_i64_u: case Op.f64_convert_i64_s: return `Number(${emit(ast[ptr + 1])})`
-      case Op.i32_reinterpret_f32: return `l.${LibFn.i32_reinterpret_f32}(${emit(ast[ptr + 1])})`
-      case Op.i64_reinterpret_f64: return `l.${LibFn.i64_reinterpret_f64}(${emit(ast[ptr + 1])})`
-      case Op.f32_reinterpret_i32: return `l.${LibFn.f32_reinterpret_i32}(${emit(ast[ptr + 1])})`
-      case Op.f64_reinterpret_i64: return `l.${LibFn.f64_reinterpret_i64}(${emit(ast[ptr + 1])})`
+      case Op.i32_reinterpret_f32: return `l.${/* @__KEY__ */ 'i32_reinterpret_f32_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_reinterpret_f64: return `l.${/* @__KEY__ */ 'i64_reinterpret_f64_'}(${emit(ast[ptr + 1])})`
+      case Op.f32_reinterpret_i32: return `l.${/* @__KEY__ */ 'f32_reinterpret_i32_'}(${emit(ast[ptr + 1])})`
+      case Op.f64_reinterpret_i64: return `l.${/* @__KEY__ */ 'f64_reinterpret_i64_'}(${emit(ast[ptr + 1])})`
 
       case Op.i32_extend8_s: return `${emit(ast[ptr + 1])}<<24>>24`
       case Op.i32_extend16_s: return `${emit(ast[ptr + 1])}<<16>>16`
-      case Op.i64_extend8_s: return `l.${LibFn.i64_extend8_s}(${emit(ast[ptr + 1])})`
-      case Op.i64_extend16_s: return `l.${LibFn.i64_extend16_s}(${emit(ast[ptr + 1])})`
-      case Op.i64_extend32_s: return `l.${LibFn.i64_extend32_s}(${emit(ast[ptr + 1])})`
+      case Op.i64_extend8_s: return `l.${/* @__KEY__ */ 'i64_extend8_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_extend16_s: return `l.${/* @__KEY__ */ 'i64_extend16_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_extend32_s: return `l.${/* @__KEY__ */ 'i64_extend32_s_'}(${emit(ast[ptr + 1])})`
 
       default: throw 'Internal error'
     }

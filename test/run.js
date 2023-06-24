@@ -131,3 +131,8 @@ runTests(WebAssembly)
 
 console.log('\n===== Shim =====')
 import('../index.js').then(({ WebAssembly }) => runTests(WebAssembly))
+
+  .then(() => {
+    console.log('\n===== Minified Shim =====')
+    import('../index.min.js').then(({ WebAssembly }) => runTests(WebAssembly))
+  })
