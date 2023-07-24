@@ -786,9 +786,11 @@ export const compileCode = (
 
     const optimizeChildrenAndSelf = (ptr: number): number => {
       const node = ast[ptr]
+      const op = node & Pack.OpMask
       const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
+      const usesTypedArrays = (op >= Op.i32_load && op <= Op.i64_store32) || op === Op.memory_copy || op === Op.memory_fill
 
-      // Optimize the children first
+      // Inline and optimize the children first
       for (let j = childCount - 1; i >= 0 && j >= 0; j--) {
         const stackSlot = -ast[ptr + j + 1]
         let didSkip = false
@@ -797,16 +799,39 @@ export const compileCode = (
           const prevPtr = astPtrs[k]
           if (prevPtr === null) continue
 
-          // If this load is from the previous store, inline the node. Do not
-          // inline "memory_grow" opcodes as these mutate our typed array views
-          // which should not happen in the middle of an expression. Note that
-          // this doesn't fully prevent issues due to memory growth as our
-          // callers might still be in the middle of an expression. If it turns
-          // out that that's important for correctness, then we must avoid
-          // inlining into all load and store expressions.
           const prevNode = ast[prevPtr]
           const prevOp = prevNode & Pack.OpMask
-          if (prevOp === Op.memory_grow) break
+
+          // Don't inline most child expressions into memory opcodes because
+          // memory opcodes access typed array views. Child expressions might
+          // trigger the "memory_grow" opcode which might mutate our typed
+          // array views in the middle of the expression. This isn't correct
+          // because JavaScript evaluation will have already loaded the old
+          // typed array views.
+          //
+          // For example, consider an expression where a "call_indirect" inside
+          // of an "i32_load" which generates the following JavaScript:
+          //
+          //   s1 = f[0]();
+          //   c.dv.getInt32(s1, 1);
+          //
+          // We must not inline the child expression to produce this:
+          //
+          //   c.dv.getInt32(f[0](), 1);
+          //
+          // The function call may trigger "memory_grow" which will detach the
+          // DataView object "c.dv" which will crash.
+          if (usesTypedArrays &&
+            // The only exception we make is for nodes that are trivially safe,
+            // which include terminal nodes without any children that don't
+            // have side effects. The common ones are special-cased below.
+            (prevOp < Op.i32_const || prevOp > Op.i64_const) &&
+            prevOp != Op.local_get
+          ) {
+            break
+          }
+
+          // If this load is from the previous store, then inline the node
           if ((prevNode >>> Pack.OutSlotShift) === stackSlot) {
             astPtrs[k] = null // Prevent inlined nodes from being emitted at the top level
             if (!didSkip) i = k - 1 // No need to re-scan these nodes
@@ -853,6 +878,9 @@ export const compileCode = (
       if ((ptr = astPtrs[i--]) !== null) {
         const stackSlot = ast[ptr] >>> Pack.OutSlotShift
         parts.push(`${stackSlot ? stackSlotName(stackSlot) + '=' : ''}${emitUnwrapped(ptr)};`)
+
+        // Comment this in to help with debugging
+        // parts.push(`\n  /* ${debugPrintNode(constants, dataView, ptr)} */ `)
       }
     }
 
@@ -1334,4 +1362,29 @@ export const compileCode = (
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
   const js = `return{${name}(${names.slice(0, argCount)}){var ${decls};${body}}}[${name}]`
   return new Function('f', 'c', 't', 'g', 'l', js)(funcs, context, table, globals, library)
+}
+
+// This can pretty-print the expression subtree at "ptr" (for use with debugging)
+const debugPrintNode = (constants: bigint[], dataView: DataView, ptr: number, isNested = false): string => {
+  if (ptr < 0) return `s${-ptr}`
+  const ast = astBufferSingleton
+  const node = ast[ptr]
+  const op = node & Pack.OpMask
+  const stackSlot = node >>> Pack.OutSlotShift
+  let text: string
+  if (op === Op.i32_const) text = `${ast[ptr + 1]} as i32`
+  else if (op === Op.i64_const) text = `${constants[ast[ptr + 1]]} as i64`
+  else if (op === Op.f32_const) text = `${dataView.getFloat32(ast[ptr + 1], true)} as f32`
+  else if (op === Op.f64_const) text = `${dataView.getFloat64(ast[ptr + 1], true)} as f64`
+  else {
+    const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
+    const args: string[] = []
+    let i = 1
+    while (i <= childCount) args.push(debugPrintNode(constants, dataView, ast[ptr + i++], true))
+    if (op >= Op.i32_load && op <= Op.i64_store32) args.push(`offset: ${ast[ptr + i]}`)
+    else if (op >= Op.local_get && op <= Op.global_set) args.push(`index: ${ast[ptr + i]}`)
+    text = `${Op[op]}(${args.join(', ')})`
+  }
+  if (!isNested && stackSlot) text = `s${stackSlot} = ${text}`
+  return text
 }
