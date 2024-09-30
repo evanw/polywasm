@@ -303,14 +303,14 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Element) {
       for (let i = 0, elementCount = readU32LEB(); i < elementCount; i++) {
-        const byte = bytes[ptr++]
-        if (byte === 0) {
+        const flags = readU32LEB()
+        if (flags === 0) {
           const offset = readConstantU32()
           const indices: number[] = []
           for (let j = 0, count = readU32LEB(); j < count; j++) indices.push(readU32LEB())
           elementSection.push([offset, indices])
         } else {
-          throw new Error('Unsupported element kind: ' + byte)
+          throw new Error('Unsupported element kind: ' + flags)
         }
       }
     }
@@ -328,7 +328,7 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Data) {
       for (let i = 0, dataCount = readU32LEB(); i < dataCount; i++) {
-        const flags: SegmentFlag = bytes[ptr++]
+        const flags: SegmentFlag = readU32LEB()
         const memory = flags & SegmentFlag.MemoryIndex ? readU32LEB() : 0
         const offset = flags & SegmentFlag.Passive ? 0 : readConstantU32()
         const length = readU32LEB()
