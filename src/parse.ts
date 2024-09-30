@@ -233,7 +233,7 @@ const parse = (bytes: Uint8Array): WASM => {
         const subsection: NameSubsection = bytes[ptr++]
         const subsectionEnd = ptr + readU32LEB()
         if (subsection === NameSubsection.Function) {
-          for (let i = 0, count = readI32LEB(); i < count && ptr < subsectionEnd; i++) {
+          for (let i = 0, count = readU32LEB(); i < count && ptr < subsectionEnd; i++) {
             nameSection.set(readU32LEB(), readName())
           }
         }
