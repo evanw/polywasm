@@ -1,5 +1,5 @@
 import { castToJS, castToWASM, compileCode, liveCastToWASM } from './compile'
-import { createLibrary } from './library'
+import { createLibrary, Library } from './library'
 import { Desc, FuncType, Module, Type, moduleMap } from './parse'
 
 export class Global {
@@ -66,6 +66,25 @@ const growContext = (context: Context, pagesDelta: number): number => {
   return pageCount
 }
 
+const compileImportFunc = (funcType: FuncType, value: WebAssembly.ImportValue, library: Library): (...args: any[]) => any => {
+  const [argTypes, returnTypes] = funcType
+  const argNames: string[] = []
+  const argExprs: string[] = []
+  for (let i = 0; i < argTypes.length; i++) {
+    argNames.push('a' + i)
+    argExprs.push(castToJS('a' + i, argTypes[i]))
+  }
+  let result = `f(${argExprs})`
+  if (returnTypes.length === 1) {
+    result = 'return ' + castToWASM(result, returnTypes[0])
+  } else if (returnTypes.length > 1) {
+    result = `let r=${result};`
+    for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToWASM(`r[${i}]`, returnTypes[i])};`
+    result += 'return r'
+  }
+  return new Function('f', 'l', `return(${argNames})=>{${result}}`)(value, library)
+}
+
 export class Instance {
   declare exports: WebAssembly.Exports
 
@@ -124,22 +143,10 @@ export class Instance {
       const value = importObject![module][name]
       if (desc === Desc.Func) {
         const funcType = typeSection[payload]
-        const [argTypes, returnTypes] = funcType
-        const argNames: string[] = []
-        const argExprs: string[] = []
-        for (let i = 0; i < argTypes.length; i++) {
-          argNames.push('a' + i)
-          argExprs.push(castToJS('a' + i, argTypes[i]))
-        }
-        let result = `f(${argExprs})`
-        if (returnTypes.length === 1) {
-          result = 'return ' + castToWASM(result, returnTypes[0])
-        } else if (returnTypes.length > 1) {
-          result = `let r=${result};`
-          for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToWASM(`r[${i}]`, returnTypes[i])};`
-          result += 'return r'
-        }
-        funcs.push(new Function('f', 'l', `return(${argNames})=>{${result}}`)(value, library))
+        const index = funcs.length
+        funcs.push((...args: any[]) => {
+          return (funcs[index] = compileImportFunc(funcType, value, library))(...args)
+        })
         funcTypes.push(funcType)
       } else if (desc === Desc.Global) {
         globals.push(liveCastToWASM(value, payload))
