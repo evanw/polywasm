@@ -248,6 +248,7 @@ export const liveCastToWASM = (value: any, type: Type): number | bigint => {
   if (type === Type.F32 || type === Type.F64) return +value
   if (type === Type.I32) return value | 0
   if (type === Type.I64) return BigInt(value) & 0xFFFF_FFFF_FFFF_FFFFn
+  if (type === Type.ExternRef) return value
   throw new Error('Unsupported cast to type ' + type)
 }
 
@@ -255,6 +256,7 @@ export const castToWASM = (code: string, type: Type): string => {
   if (type === Type.F32 || type === Type.F64) return '+' + code
   if (type === Type.I32) return code + '|0'
   if (type === Type.I64) return `BigInt(${code})&0xFFFFFFFFFFFFFFFFn`
+  if (type === Type.ExternRef) return code
   throw new Error('Unsupported cast to type ' + type)
 }
 
@@ -262,6 +264,7 @@ export const castToJS = (code: string, type: Type): string => {
   if (type === Type.F64 || type === Type.I32) return code
   if (type === Type.F32) return `Math.fround(${code})`
   if (type === Type.I64) return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${code})`
+  if (type === Type.ExternRef) return code
   throw new Error('Unsupported cast to type ' + type)
 }
 
