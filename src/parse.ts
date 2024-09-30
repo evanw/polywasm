@@ -168,8 +168,8 @@ const parse = (bytes: Uint8Array): WASM => {
     const op: Op = bytes[ptr++]
     let value: number
     if (op === Op.i32_const) value = readU32LEB()
-    else throw new Error('Unsupported constant instruction: 0x' + op.toString(16))
-    if (bytes[ptr++] !== Op.end) throw new Error('Expected end after constant')
+    else throw new CompileError('Unsupported constant instruction: 0x' + op.toString(16))
+    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
     return value
   }
 
@@ -196,8 +196,8 @@ const parse = (bytes: Uint8Array): WASM => {
       const index = readU32LEB()
       initializer = globals => globals[index]
     }
-    else throw new Error('Unsupported constant instruction: 0x' + op.toString(16))
-    if (bytes[ptr++] !== Op.end) throw new Error('Expected end after constant')
+    else throw new CompileError('Unsupported constant instruction: 0x' + op.toString(16))
+    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
     return initializer
   }
 
@@ -217,7 +217,7 @@ const parse = (bytes: Uint8Array): WASM => {
   let ptr = 8
 
   if (bytes.slice(0, 8).join(',') !== '0,97,115,109,1,0,0,0')
-    throw new Error('Invalid file header')
+    throw new CompileError('Invalid file header')
 
   while (ptr + 5 < bytes.length) {
     const sectionType: Section = bytes[ptr++]
@@ -242,7 +242,7 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Type) {
       for (let i = 0, typeCount = readU32LEB(); i < typeCount; i++) {
-        if (bytes[ptr++] !== 0x60) throw new Error('Invalid function type')
+        if (bytes[ptr++] !== 0x60) throw new CompileError('Invalid function type')
         typeSection.push([readValueTypes(), readValueTypes()])
       }
     }
@@ -256,7 +256,7 @@ const parse = (bytes: Uint8Array): WASM => {
         else if (desc === Desc.Table) importSection.push([module, name, desc, bytes[ptr++], ...readLimits()])
         else if (desc === Desc.Mem) importSection.push([module, name, desc, ...readLimits()])
         else if (desc === Desc.Global) importSection.push([module, name, desc, bytes[ptr++], bytes[ptr++]])
-        else throw new Error('Unsupported import type: ' + desc)
+        else throw new CompileError('Unsupported import type: ' + desc)
       }
     }
 
@@ -310,7 +310,7 @@ const parse = (bytes: Uint8Array): WASM => {
           for (let j = 0, count = readU32LEB(); j < count; j++) indices.push(readU32LEB())
           elementSection.push([offset, indices])
         } else {
-          throw new Error('Unsupported element kind: ' + flags)
+          throw new CompileError('Unsupported element kind: ' + flags)
         }
       }
     }
@@ -341,7 +341,7 @@ const parse = (bytes: Uint8Array): WASM => {
     }
 
     else {
-      throw new Error('Unsupported section type ' + sectionType)
+      throw new CompileError('Unsupported section type ' + sectionType)
     }
 
     ptr = sectionEnd
@@ -377,4 +377,11 @@ export class Module {
   declare static customSections: (moduleObject: Module, sectionName: string) => ArrayBuffer[]
   declare static exports: (moduleObject: Module) => WebAssembly.ModuleExportDescriptor[]
   declare static imports: (moduleObject: Module) => WebAssembly.ModuleImportDescriptor[]
+}
+
+export class CompileError extends Error {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'CompileError'
+  }
 }
