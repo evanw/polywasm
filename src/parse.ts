@@ -168,7 +168,7 @@ const parse = (bytes: Uint8Array): WASM => {
     const op: Op = bytes[ptr++]
     let value: number
     if (op === Op.i32_const) value = readU32LEB()
-    else throw new CompileError('Unsupported constant instruction: 0x' + op.toString(16))
+    else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
     if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
     return value
   }
@@ -196,7 +196,7 @@ const parse = (bytes: Uint8Array): WASM => {
       const index = readU32LEB()
       initializer = globals => globals[index]
     }
-    else throw new CompileError('Unsupported constant instruction: 0x' + op.toString(16))
+    else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
     if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
     return initializer
   }
@@ -364,6 +364,10 @@ const parse = (bytes: Uint8Array): WASM => {
     tableSection_: tableSection,
     typeSection_: typeSection,
   }
+}
+
+export const formatHexByte = (x: number): string => {
+  return '0x' + x.toString(16).toUpperCase().padStart(2, '0')
 }
 
 export const moduleMap = new Map<Module, WASM>()

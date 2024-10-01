@@ -4,7 +4,7 @@
 import { Context, ContextField } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
-import { FuncType, Type, WASM } from './parse'
+import { formatHexByte, FuncType, Type, WASM } from './parse'
 
 export enum Op {
   // These are prefixed by 0xFC
@@ -1348,12 +1348,12 @@ export const compileCode = (
               ast[astNextPtr++] = -(stackTop + 2)
             }
           } else {
-            throw new Error('Unsupported instruction: 0xFC' + op.toString(16).padStart(2, '0'))
+            throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op))
           }
           break
 
         default:
-          throw new Error('Unsupported instruction: 0x' + op.toString(16).padStart(2, '0'))
+          throw new Error('Unsupported instruction: ' + formatHexByte(op))
       }
     }
   }
