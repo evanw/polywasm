@@ -2,8 +2,12 @@ import { castToJS, castToWASM, compileCode, liveCastToWASM } from './compile'
 import { createLibrary, Library } from './library'
 import { Desc, FuncType, Module, Type, moduleMap } from './parse'
 
-export class Global {
-  declare value: any
+export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
+  declare value: WebAssembly.ValueTypeMap[T]
+
+  valueOf(): WebAssembly.ValueTypeMap[T] {
+    return this.value
+  }
 }
 
 export class Memory {
