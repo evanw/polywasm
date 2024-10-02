@@ -107,7 +107,7 @@ export class Instance {
       tableSection_: tableSection,
       typeSection_: typeSection,
     } = wasm
-    const exports: WebAssembly.Exports = this.exports = {}
+    const exports: WebAssembly.Exports = this.exports = Object.create(null)
     const funcs: Function[] = []
     const funcTypes: FuncType[] = []
     const globals: (number | bigint)[] = []
