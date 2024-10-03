@@ -25,6 +25,7 @@ export class Table {
 export const enum ContextField {
   PageCount = 'pc',
   PageGrow = 'pg',
+  DataSegments = 'ds',
 
   // These are reset when the memory grows
   Int8Array = 'i8',
@@ -37,6 +38,7 @@ export class Context {
   declare pageLimit_: number
   declare [ContextField.PageCount]: number
   declare [ContextField.PageGrow]: (pagesDelta: number) => number
+  declare [ContextField.DataSegments]: Uint8Array[]
 
   // These are reset when the memory grows
   declare [ContextField.Int8Array]: Int8Array
@@ -136,12 +138,16 @@ export class Instance {
     resetContext(context, memory.buffer = new ArrayBuffer(context[ContextField.PageCount] << 16))
 
     // Handle data
-    for (const [index, offset, data] of dataSection) {
+    const dataSegments: Uint8Array[] = []
+    for (let [index, offset, data] of dataSection) {
       if (index !== 0) throw new Error(`Invalid memory index: ${index}`)
       if (offset !== null) {
         context[ContextField.Uint8Array].set(data, offset)
+        data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
       }
+      dataSegments.push(data)
     }
+    context[ContextField.DataSegments] = dataSegments
 
     // Handle imports
     for (const tuple of importSection) {

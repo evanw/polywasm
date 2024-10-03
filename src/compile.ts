@@ -222,6 +222,8 @@ export enum Op {
   i64_trunc_sat_f64_s = 0xFC_06,
   i64_trunc_sat_f64_u = 0xFC_07,
 
+  memory_init = 0xFC_08,
+  data_drop = 0xFC_09,
   memory_copy = 0xFC_0A,
   memory_fill = 0xFC_0B,
 }
@@ -761,6 +763,8 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
+      case Op.memory_init: return `c.${ContextField.Uint8Array}.set(c.${ContextField.DataSegments}[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
+      case Op.data_drop: return `c.${ContextField.DataSegments}[${ast[ptr + 1]}]=new Uint8Array`
       case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
@@ -789,7 +793,7 @@ export const compileCode = (
       const node = ast[ptr]
       const op = node & Pack.OpMask
       const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
-      const usesTypedArrays = (op >= Op.i32_load && op <= Op.i64_store32) || op === Op.memory_copy || op === Op.memory_fill
+      const usesTypedArrays = (op >= Op.i32_load && op <= Op.i64_store32) || (op >= Op.memory_init && op <= Op.memory_fill)
 
       // Inline and optimize the children first
       for (let j = childCount - 1; i >= 0 && j >= 0; j--) {
@@ -1330,6 +1334,32 @@ export const compileCode = (
           }
 
           switch (op) {
+            case Op.memory_init: {
+              const index = readU32LEB()
+              if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
+              if (index >= context[ContextField.DataSegments].length) throw new Error('Invalid passive data index: ' + index)
+              if (!blocks[blocks.length - 1].isDead_) {
+                // Note: JS evaluation order is different than WASM evaluation order here
+                stackTop -= 2
+                astPtrs.push(astNextPtr)
+                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+                ast[astNextPtr++] = -(stackTop + 1)
+                ast[astNextPtr++] = -(stackTop + 2)
+                ast[astNextPtr++] = -stackTop
+                ast[astNextPtr++] = index
+              }
+              break
+            }
+
+            case Op.data_drop: {
+              const index = readU32LEB()
+              if (index >= context[ContextField.DataSegments].length) throw new Error('Invalid passive data index: ' + index)
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op
+              ast[astNextPtr++] = index
+              break
+            }
+
             case Op.memory_copy:
               if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
               if (!blocks[blocks.length - 1].isDead_) {
