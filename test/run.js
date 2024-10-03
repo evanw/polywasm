@@ -86,12 +86,12 @@ function runTests(wasm) {
       function assert_return(fn, ...expected) {
         const result = fn()
         if (result.error) {
-          console.error('❌ assert_return: ' + fn + ': ' + result.error)
+          console.log('❌ assert_return: ' + fn + ': ' + result.error)
           counters.failed++
         } else {
           const observed = result.value ?? []
           if (observed + '' !== expected + '') {
-            console.error('❌ assert_return: ' + fn + ': expected=' + expected + ' observed=' + observed)
+            console.log('❌ assert_return: ' + fn + ': expected=' + expected + ' observed=' + observed)
             counters.failed++
           } else {
             // console.log('✅ assert_return: ' + fn)
