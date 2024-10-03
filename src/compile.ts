@@ -7,20 +7,6 @@ import { compileOptimizations } from './optimize'
 import { formatHexByte, FuncType, Type, WASM } from './parse'
 
 export enum Op {
-  // These are prefixed by 0xFC
-  i32_trunc_sat_f32_s = 0x00,
-  i32_trunc_sat_f32_u = 0x01,
-  i32_trunc_sat_f64_s = 0x02,
-  i32_trunc_sat_f64_u = 0x03,
-  i64_trunc_sat_f32_s = 0x04,
-  i64_trunc_sat_f32_u = 0x05,
-  i64_trunc_sat_f64_s = 0x06,
-  i64_trunc_sat_f64_u = 0x07,
-
-  // These are prefixed by 0xFC
-  memory_copy = 0x0A,
-  memory_fill = 0x0B,
-
   unreachable = 0x00,
   nop = 0x01,
   block = 0x02,
@@ -226,6 +212,18 @@ export enum Op {
   TO_S64 = 0xF4,
   U32_LOAD = 0xF5,
   S64_LOAD = 0xF6,
+
+  i32_trunc_sat_f32_s = 0xFC_00,
+  i32_trunc_sat_f32_u = 0xFC_01,
+  i32_trunc_sat_f64_s = 0xFC_02,
+  i32_trunc_sat_f64_u = 0xFC_03,
+  i64_trunc_sat_f32_s = 0xFC_04,
+  i64_trunc_sat_f32_u = 0xFC_05,
+  i64_trunc_sat_f64_s = 0xFC_06,
+  i64_trunc_sat_f64_u = 0xFC_07,
+
+  memory_copy = 0xFC_0A,
+  memory_fill = 0xFC_0B,
 }
 
 const enum BlockKind {
@@ -478,9 +476,9 @@ metaTable[Op.i64_extend32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 // data after the children allows the AST to be traversed generically without
 // needing to know the specifics of each node's internal format.
 export const enum Pack {
-  OpMask = 255,
-  ChildCountShift = 8,
-  ChildCountMask = 0xFFFF,
+  OpMask = 0xFFFF,
+  ChildCountShift = 16,
+  ChildCountMask = 0xFF,
   OutSlotShift = 24,
 }
 
@@ -597,18 +595,6 @@ export const compileCode = (
     const node = ast[ptr]
 
     switch (node & Pack.OpMask) {
-      case Op.i32_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
-      case Op.i32_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
-      case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
-
-      case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
-      case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
-
       case Op.call: {
         const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
         const funcIndex = ast[ptr + childCount + 1]
@@ -765,6 +751,18 @@ export const compileCode = (
       case Op.i64_extend8_s: return `l.${/* @__KEY__ */ 'i64_extend8_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_extend16_s: return `l.${/* @__KEY__ */ 'i64_extend16_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_extend32_s: return `l.${/* @__KEY__ */ 'i64_extend32_s_'}(${emit(ast[ptr + 1])})`
+
+      case Op.i32_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i32_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
+      case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
+
+      case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
+      case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
       default: throw 'Internal error'
     }
@@ -1095,7 +1093,7 @@ export const compileCode = (
 
   while (bytesPtr < codeEnd) {
     let op = bytes[bytesPtr++]
-    const flags: MetaFlag = metaTable[op]
+    const flags: MetaFlag = metaTable[op] | 0
 
     // Most opcodes can be decoded automatically using a table lookup
     if (flags & MetaFlag.Simple) {
@@ -1321,34 +1319,44 @@ export const compileCode = (
           break
 
         case 0xFC:
-          op = bytes[bytesPtr++]
+          // This is a prefix for a subset of instructions
+          op = 0xFC00 | bytes[bytesPtr++]
+
           if (op <= Op.i64_trunc_sat_f64_u) {
             if (!blocks[blocks.length - 1].isDead_) {
               pushUnary(op)
             }
-          } else if (op === Op.memory_copy) {
-            if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
-            if (!blocks[blocks.length - 1].isDead_) {
-              stackTop -= 2
-              astPtrs.push(astNextPtr)
-              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-              ast[astNextPtr++] = -stackTop
-              ast[astNextPtr++] = -(stackTop + 1)
-              ast[astNextPtr++] = -(stackTop + 2)
-            }
-          } else if (op === Op.memory_fill) {
-            if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
-            if (!blocks[blocks.length - 1].isDead_) {
-              // Note: JS evaluation order is different than WASM evaluation order here
-              stackTop -= 2
-              astPtrs.push(astNextPtr)
-              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-              ast[astNextPtr++] = -(stackTop + 1)
-              ast[astNextPtr++] = -stackTop
-              ast[astNextPtr++] = -(stackTop + 2)
-            }
-          } else {
-            throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op))
+            break
+          }
+
+          switch (op) {
+            case Op.memory_copy:
+              if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
+              if (!blocks[blocks.length - 1].isDead_) {
+                stackTop -= 2
+                astPtrs.push(astNextPtr)
+                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+                ast[astNextPtr++] = -stackTop
+                ast[astNextPtr++] = -(stackTop + 1)
+                ast[astNextPtr++] = -(stackTop + 2)
+              }
+              break
+
+            case Op.memory_fill:
+              if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
+              if (!blocks[blocks.length - 1].isDead_) {
+                // Note: JS evaluation order is different than WASM evaluation order here
+                stackTop -= 2
+                astPtrs.push(astNextPtr)
+                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+                ast[astNextPtr++] = -(stackTop + 1)
+                ast[astNextPtr++] = -stackTop
+                ast[astNextPtr++] = -(stackTop + 2)
+              }
+              break
+
+            default:
+              throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
           }
           break
 

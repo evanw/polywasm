@@ -86,7 +86,7 @@ WebAssembly bytecode is decoded into an AST so that it can be optimized before c
 Each AST node takes the following form (given the index `ptr` of a node for which space has already been reserved):
 
 ```js
-ast[ptr] = opcode | (childCount << 8) | (outputStackSlot << 24)
+ast[ptr] = opcode | (childCount << 16) | (outputStackSlot << 24)
 ast[ptr + 1] = /* child 1 */
 ast[ptr + 2] = /* child 2 */
 ...
