@@ -170,7 +170,7 @@ const parse = (bytes: Uint8Array): WASM => {
     let value: number
     if (op === Op.i32_const) value = readU32LEB()
     else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
-    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
+    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
     return value
   }
 
@@ -198,7 +198,7 @@ const parse = (bytes: Uint8Array): WASM => {
       initializer = globals => globals[index]
     }
     else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
-    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant')
+    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
     return initializer
   }
 
@@ -243,7 +243,7 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Type) {
       for (let i = 0, typeCount = readU32LEB(); i < typeCount; i++) {
-        if (bytes[ptr++] !== 0x60) throw new CompileError('Invalid function type')
+        if (bytes[ptr++] !== 0x60) throw new CompileError('Invalid function type: ' + formatHexByte(bytes[ptr - 1]))
         typeSection.push([readValueTypes(), readValueTypes()])
       }
     }
@@ -257,7 +257,7 @@ const parse = (bytes: Uint8Array): WASM => {
         else if (desc === Desc.Table) importSection.push([module, name, desc, bytes[ptr++], ...readLimits()])
         else if (desc === Desc.Mem) importSection.push([module, name, desc, ...readLimits()])
         else if (desc === Desc.Global) importSection.push([module, name, desc, bytes[ptr++], bytes[ptr++]])
-        else throw new CompileError('Unsupported import type: ' + desc)
+        else throw new CompileError('Unsupported import type: ' + formatHexByte(desc))
       }
     }
 
@@ -343,7 +343,7 @@ const parse = (bytes: Uint8Array): WASM => {
     }
 
     else {
-      throw new CompileError('Unsupported section type ' + sectionType)
+      throw new CompileError('Unsupported section type: ' + formatHexByte(sectionType))
     }
 
     ptr = sectionEnd
