@@ -22,6 +22,10 @@ export class Table {
   declare set: (index: number, value?: any) => void
 }
 
+export interface LazyFunc {
+  compiled_: Function // This is overwritten once when the function is first compiled
+}
+
 export const enum ContextField {
   PageCount = 'pc',
   PageGrow = 'pg',
@@ -112,8 +116,23 @@ export class Instance {
     const funcTypes: FuncType[] = []
     const globals: (number | bigint)[] = []
     const globalTypes: Type[] = []
-    const tables: (Function | null)[][] = []
+    const lazyFuncs: Record<number, LazyFunc> = {}
+    const tables: (LazyFunc | null)[][] = []
     const library = createLibrary()
+
+    // Returns an object with a function that lazily-compiles the underlying
+    // function once and then overwrites itself regardless of where the object
+    // is referenced from. This is important for mutable tables of functions.
+    const createLazyFunc = (index: number): LazyFunc => {
+      const obj: LazyFunc = lazyFuncs[index] || (lazyFuncs[index] = {
+        compiled_: (...args: [any[]]): any => {
+          const result = funcs[index](...args) // Compile the function for the first time
+          obj.compiled_ = funcs[index] // Overwrite ourselves with the newly-compiled function
+          return result
+        },
+      })
+      return obj
+    }
 
     // Handle memory
     const context = new Context
@@ -193,7 +212,7 @@ export class Instance {
 
     // Handle tables
     for (const [type, min, max] of tableSection) {
-      const table: (Function | null)[] = []
+      const table: (LazyFunc | null)[] = []
       for (let i = 0; i < min; i++) table.push(null)
       tables.push(table)
     }
@@ -201,12 +220,7 @@ export class Instance {
       if (tables.length !== 1) throw new Error('Multiple tables are unsupported')
       const table = tables[0]
       for (const index of indices) {
-        const i = offset++
-        table[i] = (...args: any[]): any => {
-          const result = funcs[index](...args) // Compile the function for the first time
-          table[i] = funcs[index] // Overwrite ourselves with the newly-compiled function
-          return result
-        }
+        table[offset++] = createLazyFunc(index)
       }
     }
 

@@ -1,7 +1,7 @@
 // This file provides a way to parse a single WebAssembly function and convert
 // it to JavaScript. Functions are compiled lazily when they are first evaluated.
 
-import { Context, ContextField } from './instantiate'
+import { Context, ContextField, LazyFunc } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
 import { formatHexByte, FuncType, Type, WASM } from './parse'
@@ -495,7 +495,7 @@ const optimizeNode = compileOptimizations()
 export const compileCode = (
   funcs: Function[],
   funcTypes: FuncType[],
-  tables: (Function | null)[][],
+  tables: (LazyFunc | null)[][],
   dataSegments: Uint8Array[],
   globals: (number | bigint)[],
   library: Library,
@@ -627,9 +627,9 @@ export const compileCode = (
         const typeIndex = ast[ptr + childCount + 3]
         const [argTypes, returnTypes] = typeSection[typeIndex]
         const args: string[] = []
-        const func = emit(ast[ptr + 1])
+        const funcIndex = emit(ast[ptr + 1])
         for (let i = 1; i <= childCount; i++) args.push(emit(ast[ptr + i + 1]))
-        const code = tableName(tableIndex) + `[${func}](${args})`
+        const code = tableName(tableIndex) + `[${funcIndex}].${/* @__KEY__ */ 'compiled_'}(${args})`
         if (returnTypes.length < 2) return code
         const slot = ast[ptr + childCount + 4]
         const returns: string[] = []
