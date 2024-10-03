@@ -1,3 +1,6 @@
+import { castToJS, castToWASM } from './compile'
+import { LazyFunc } from './instantiate'
+
 export type Library = ReturnType<typeof createLibrary>
 
 export const createLibrary = () => {
@@ -7,6 +10,7 @@ export const createLibrary = () => {
   const i32 = new Int32Array(buffer)
   const i64 = new BigInt64Array(buffer)
   const u64 = new BigUint64Array(buffer)
+  const exportedFuncs = new Map<Function, LazyFunc>()
 
   return {
     copysign_(x: number, y: number): number {
@@ -110,6 +114,34 @@ export const createLibrary = () => {
     },
     i64_extend32_s_(x: bigint): bigint {
       return x & 0x8000_0000n ? x | 0xFFFF_FFFF_0000_0000n : x & 0xFFFF_FFFFn
+    },
+    importLazyFunc_(fn: Function | null): LazyFunc | null {
+      if (fn === null) return fn
+      const obj = exportedFuncs.get(fn)
+      if (obj) return obj
+      throw new Error('Unexpected foreign function object')
+    },
+    exportLazyFunc_(obj: LazyFunc | null): Function | null {
+      if (obj === null) return null
+      if (!obj.exported_) {
+        const [argTypes, returnTypes] = obj.type_
+        const argNames: string[] = []
+        const argExprs: string[] = []
+        for (let i = 0; i < argTypes.length; i++) {
+          argNames.push('a' + i)
+          argExprs.push(castToWASM('a' + i, argTypes[i]))
+        }
+        let result = `f.${/* @__KEY__ */ 'compiled_'}(${argExprs})`
+        if (returnTypes.length === 1) {
+          result = 'return ' + castToJS(result, returnTypes[0])
+        } else if (returnTypes.length > 1) {
+          result = `let r=${result};`
+          for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToJS(`r[${i}]`, returnTypes[i])};`
+          result += 'return r'
+        }
+        exportedFuncs.set(obj.exported_ = new Function('f', 'l', `return(${argNames})=>{${result}}`)(obj, this), obj)
+      }
+      return obj.exported_
     },
   }
 }

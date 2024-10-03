@@ -204,6 +204,10 @@ export enum Op {
   i64_extend16_s = 0xC3,
   i64_extend32_s = 0xC4,
 
+  ref_null = 0xD0,
+  ref_is_null = 0xD1,
+  ref_func = 0xD2,
+
   // These are our own opcodes, and are not part of WebAssembly
   BOOL = 0xF0,
   BOOL_NOT = 0xF1,
@@ -257,6 +261,7 @@ export const castToWASM = (code: string, type: Type): string => {
   if (type === Type.I32) return code + '|0'
   if (type === Type.I64) return `BigInt(${code})&0xFFFFFFFFFFFFFFFFn`
   if (type === Type.ExternRef) return code
+  if (type === Type.FuncRef) return `l.${/* @__KEY__ */ 'importLazyFunc_'}(${code})`
   throw new Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
@@ -265,6 +270,7 @@ export const castToJS = (code: string, type: Type): string => {
   if (type === Type.F32) return `Math.fround(${code})`
   if (type === Type.I64) return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${code})`
   if (type === Type.ExternRef) return code
+  if (type === Type.FuncRef) return `l.${/* @__KEY__ */ 'exportLazyFunc_'}(${code})`
   throw new Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
@@ -294,6 +300,9 @@ metaTable[Op.local_set] = 1 | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.local_tee] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.global_get] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.global_set] = 1 | MetaFlag.HasIndex | MetaFlag.Simple
+
+metaTable[Op.table_get] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.table_set] = 2 | MetaFlag.HasIndex | MetaFlag.Simple
 
 metaTable[Op.i32_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.i64_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
@@ -460,6 +469,10 @@ metaTable[Op.i64_extend8_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_extend16_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_extend32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 
+metaTable[Op.ref_null] = MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.Simple
+metaTable[Op.ref_is_null] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+metaTable[Op.ref_func] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+
 // WebAssembly bytecode is decoded into an AST so that it can be optimized
 // before converting it to JavaScript. The AST is stored as numbers in an
 // array instead of as JavaScript objects for performance, which can matter
@@ -495,6 +508,7 @@ const optimizeNode = compileOptimizations()
 export const compileCode = (
   funcs: Function[],
   funcTypes: FuncType[],
+  createLazyFunc: (index: number) => LazyFunc,
   tables: (LazyFunc | null)[][],
   dataSegments: Uint8Array[],
   globals: (number | bigint)[],
@@ -644,6 +658,15 @@ export const compileCode = (
       case Op.global_get: return `g[${ast[ptr + 1]}]`
       case Op.global_set: return `g[${ast[ptr + 2]}]=${emit(ast[ptr + 1])}`
 
+      case Op.table_get: {
+        if (ast[ptr + 2] >= tables.length) throw new Error('Invalid table index: ' + ast[ptr + 2])
+        return tableName(ast[ptr + 2]) + `[${emit(ast[ptr + 1])}]`
+      }
+      case Op.table_set: {
+        if (ast[ptr + 3] >= tables.length) throw new Error('Invalid table index: ' + ast[ptr + 3])
+        return tableName(ast[ptr + 3]) + `[${emit(ast[ptr + 1])}]=${emit(ast[ptr + 2])}`
+      }
+
       case Op.i32_load: return load('Int32', ast[ptr + 1], ast[ptr + 2])
       case Op.U32_LOAD: return load('Uint32', ast[ptr + 1], ast[ptr + 2])
       case Op.i64_load: return load('BigUint64', ast[ptr + 1], ast[ptr + 2])
@@ -765,6 +788,10 @@ export const compileCode = (
       case Op.i64_extend8_s: return `l.${/* @__KEY__ */ 'i64_extend8_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_extend16_s: return `l.${/* @__KEY__ */ 'i64_extend16_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_extend32_s: return `l.${/* @__KEY__ */ 'i64_extend32_s_'}(${emit(ast[ptr + 1])})`
+
+      case Op.ref_null: return 'null'
+      case Op.ref_is_null: return `${emit(ast[ptr + 1])}===null`
+      case Op.ref_func: return `F(${ast[ptr + 1]})`
 
       case Op.i32_trunc_sat_f32_s: return `l.${/* @__KEY__ */ 'i32_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i32_trunc_sat_f32_u: return `l.${/* @__KEY__ */ 'i32_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
@@ -1415,7 +1442,7 @@ export const compileCode = (
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
   const js = `return{${name}(${names.slice(0, argCount)}){var ${decls};${body}}}[${name}]`
-  return new Function('f', 'c', 't', 'd', 'g', 'l', js)(funcs, context, tables, dataSegments, globals, library)
+  return new Function('f', 'F', 'c', 't', 'd', 'g', 'l', js)(funcs, createLazyFunc, context, tables, dataSegments, globals, library)
 }
 
 // This can pretty-print the expression subtree at "ptr" (for use with debugging)

@@ -51,6 +51,12 @@ const enum Mutable {
   Var,
 }
 
+const enum ElementFlag {
+  Passive = 1 << 0,
+  Declarative = 1 << 1,
+  Expression = 1 << 2,
+}
+
 const enum DataMode {
   ActiveZero,
   Passive,
@@ -69,7 +75,7 @@ export type LocalRun = readonly [count: number, type: Type]
 export type CodeItem = readonly [locals: readonly LocalRun[], codeStart: number, codeEnd: number]
 export type CustomItem = readonly [name: string, bytes: Uint8Array]
 export type DataItem = readonly [memory: number, offset: number | null, data: Uint8Array]
-export type ElementItem = readonly [offset: number, indices: readonly number[]]
+export type ElementItem = readonly [tableIndex: number | null, offset: number | null, indices: readonly (number | null)[]]
 export type ExportItem = readonly [name: string, desc: Desc, index: number]
 export type GlobalItem = readonly [type: Type, mutable: Mutable, initializer: (globals: (number | bigint)[]) => number | bigint]
 export type ImportItem =
@@ -169,6 +175,19 @@ const parse = (bytes: Uint8Array): WASM => {
     const op: Op = bytes[ptr++]
     let value: number
     if (op === Op.i32_const) value = readU32LEB()
+    else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
+    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
+    return value
+  }
+
+  const readConstantFuncIndex = (): number | null => {
+    const op: Op = bytes[ptr++]
+    let value: number | null
+    if (op === Op.ref_func) value = readU32LEB()
+    else if (op === Op.ref_null) {
+      if (bytes[ptr++] !== Type.FuncRef) throw new CompileError('Unsupported reference type: ' + formatHexByte(bytes[ptr - 1]))
+      value = null
+    }
     else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
     if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
     return value
@@ -304,15 +323,21 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Element) {
       for (let i = 0, elementCount = readU32LEB(); i < elementCount; i++) {
-        const flags = readU32LEB()
-        if (flags === 0) {
-          const offset = readConstantU32()
-          const indices: number[] = []
-          for (let j = 0, count = readU32LEB(); j < count; j++) indices.push(readU32LEB())
-          elementSection.push([offset, indices])
-        } else {
+        const flags: ElementFlag = readU32LEB()
+        if (flags > ElementFlag.Expression) {
           throw new CompileError('Unsupported element kind: ' + flags)
         }
+        const mode = flags & (ElementFlag.Passive | ElementFlag.Declarative)
+        const tableIndex = mode === ElementFlag.Declarative ? readU32LEB() : mode === 0 ? 0 : null
+        const offset = flags & ElementFlag.Passive ? null : readConstantU32()
+        if (mode && bytes[ptr++] !== (flags & ElementFlag.Expression ? Type.FuncRef : 0)) {
+          throw new CompileError('Unsupported element type: ' + formatHexByte(bytes[ptr - 1]))
+        }
+        const indices: (number | null)[] = []
+        for (let j = 0, count = readU32LEB(); j < count; j++) {
+          indices.push(flags & ElementFlag.Expression ? readConstantFuncIndex() : readU32LEB())
+        }
+        elementSection.push([tableIndex, offset, indices])
       }
     }
 

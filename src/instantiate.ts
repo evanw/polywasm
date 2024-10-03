@@ -23,6 +23,9 @@ export class Table {
 }
 
 export interface LazyFunc {
+  readonly index_: number
+  readonly type_: FuncType
+  exported_: Function | null // This is lazily-generated as needed (but only once because identity is important)
   compiled_: Function // This is overwritten once when the function is first compiled
 }
 
@@ -125,6 +128,9 @@ export class Instance {
     // is referenced from. This is important for mutable tables of functions.
     const createLazyFunc = (index: number): LazyFunc => {
       const obj: LazyFunc = lazyFuncs[index] || (lazyFuncs[index] = {
+        index_: index,
+        type_: funcTypes[index],
+        exported_: null,
         compiled_: (...args: [any[]]): any => {
           const result = funcs[index](...args) // Compile the function for the first time
           obj.compiled_ = funcs[index] // Overwrite ourselves with the newly-compiled function
@@ -198,6 +204,7 @@ export class Instance {
         return (funcs[index] = compileCode(
           funcs,
           funcTypes,
+          createLazyFunc,
           tables,
           dataSegments,
           globals,
@@ -216,50 +223,41 @@ export class Instance {
       for (let i = 0; i < min; i++) table.push(null)
       tables.push(table)
     }
-    for (let [offset, indices] of elementSection) {
-      if (tables.length !== 1) throw new Error('Multiple tables are unsupported')
-      const table = tables[0]
-      for (const index of indices) {
-        table[offset++] = createLazyFunc(index)
+    for (let [tableIndex, offset, indices] of elementSection) {
+      if (tableIndex === null) continue
+      if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
+      if (offset !== null) {
+        const table = tables[tableIndex]
+        for (const index of indices) {
+          table[offset++] = index === null ? null : createLazyFunc(index)
+        }
       }
     }
 
     // Handle exports
-    const exportFunc = (index: number): Function => {
-      const [argTypes, returnTypes] = funcTypes[index]
-      const argNames: string[] = []
-      const argExprs: string[] = []
-      for (let i = 0; i < argTypes.length; i++) {
-        argNames.push('a' + i)
-        argExprs.push(castToWASM('a' + i, argTypes[i]))
-      }
-      let result = `f[i](${argExprs})`
-      if (returnTypes.length === 1) {
-        result = 'return ' + castToJS(result, returnTypes[0])
-      } else if (returnTypes.length > 1) {
-        result = `let r=${result};`
-        for (let i = 0; i < returnTypes.length; i++) result += `r[${i}]=${castToJS(`r[${i}]`, returnTypes[i])};`
-        result += 'return r'
-      }
-      return new Function('f', 'i', 'l', `return(${argNames})=>{${result}}`)(funcs, index, library)
-    }
     for (const [name, desc, index] of exportSection) {
       if (desc === Desc.Func) {
-        exports[name] = exportFunc(index)
+        exports[name] = library.exportLazyFunc_(createLazyFunc(index))!
       } else if (desc === Desc.Table) {
-        const funcs: (Function | null)[] = []
-        for (let [offset, indices] of elementSection) {
-          for (const index of indices) {
-            funcs[offset++] = exportFunc(index)
-          }
-        }
+        if (index >= tables.length) throw new Error('Invalid table index: ' + index)
+        const table = tables[index]
         const value = new Table
         Object.defineProperty(value, 'length', {
-          get: () => funcs.length,
+          get: () => table.length,
         })
-        value.get = i => funcs[i]
-        value.grow = () => { throw new Error(`Unsupported operation "grow" on table ${index}`) }
-        value.set = () => { throw new Error(`Unsupported operation "set" on table ${index}`) }
+        value.get = i => {
+          i >>>= 0
+          if (i >= table.length) throw RangeError()
+          return library.exportLazyFunc_(table[i])
+        }
+        value.set = (i, fn) => {
+          i >>>= 0
+          if (i >= table.length) throw RangeError()
+          table[i] = library.importLazyFunc_(fn)
+        }
+        value.grow = () => {
+          throw new Error('Unsupported operation "grow" on table ' + index)
+        }
         exports[name] = value
       } else if (desc === Desc.Mem) {
         exports[name] = memory
