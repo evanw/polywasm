@@ -25,7 +25,6 @@ export class Table {
 export const enum ContextField {
   PageCount = 'pc',
   PageGrow = 'pg',
-  DataSegments = 'ds',
 
   // These are reset when the memory grows
   Int8Array = 'i8',
@@ -38,7 +37,6 @@ export class Context {
   declare pageLimit_: number
   declare [ContextField.PageCount]: number
   declare [ContextField.PageGrow]: (pagesDelta: number) => number
-  declare [ContextField.DataSegments]: Uint8Array[]
 
   // These are reset when the memory grows
   declare [ContextField.Int8Array]: Int8Array
@@ -147,7 +145,6 @@ export class Instance {
       }
       dataSegments.push(data)
     }
-    context[ContextField.DataSegments] = dataSegments
 
     // Handle imports
     for (const tuple of importSection) {
@@ -179,7 +176,18 @@ export class Instance {
       const index = funcs.length
       funcTypes.push(typeSection[functionSection[i]])
       funcs.push((...args: any[]): any => {
-        return (funcs[index] = compileCode(funcs, funcTypes, tables[0], globals, library, context, wasm, i, index))(...args)
+        return (funcs[index] = compileCode(
+          funcs,
+          funcTypes,
+          tables[0],
+          dataSegments,
+          globals,
+          library,
+          context,
+          wasm,
+          i,
+          index,
+        ))(...args)
       })
     }
 

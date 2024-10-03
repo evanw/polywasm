@@ -496,6 +496,7 @@ export const compileCode = (
   funcs: Function[],
   funcTypes: FuncType[],
   table: (Function | null)[] | undefined,
+  dataSegments: Uint8Array[],
   globals: (number | bigint)[],
   library: Library,
   context: Context,
@@ -763,8 +764,8 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
-      case Op.memory_init: return `c.${ContextField.Uint8Array}.set(c.${ContextField.DataSegments}[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
-      case Op.data_drop: return `c.${ContextField.DataSegments}[${ast[ptr + 1]}]=new Uint8Array`
+      case Op.memory_init: return `c.${ContextField.Uint8Array}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
+      case Op.data_drop: return `d[${ast[ptr + 1]}]=new Uint8Array`
       case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
@@ -1337,7 +1338,7 @@ export const compileCode = (
             case Op.memory_init: {
               const index = readU32LEB()
               if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
-              if (index >= context[ContextField.DataSegments].length) throw new Error('Invalid passive data index: ' + index)
+              if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
               if (!blocks[blocks.length - 1].isDead_) {
                 // Note: JS evaluation order is different than WASM evaluation order here
                 stackTop -= 2
@@ -1353,7 +1354,7 @@ export const compileCode = (
 
             case Op.data_drop: {
               const index = readU32LEB()
-              if (index >= context[ContextField.DataSegments].length) throw new Error('Invalid passive data index: ' + index)
+              if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
               astPtrs.push(astNextPtr)
               ast[astNextPtr++] = op
               ast[astNextPtr++] = index
@@ -1402,7 +1403,7 @@ export const compileCode = (
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
   const js = `return{${name}(${names.slice(0, argCount)}){var ${decls};${body}}}[${name}]`
-  return new Function('f', 'c', 't', 'g', 'l', js)(funcs, context, table, globals, library)
+  return new Function('f', 'c', 't', 'd', 'g', 'l', js)(funcs, context, table, dataSegments, globals, library)
 }
 
 // This can pretty-print the expression subtree at "ptr" (for use with debugging)
