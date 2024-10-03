@@ -138,7 +138,9 @@ export class Instance {
     // Handle data
     for (const [index, offset, data] of dataSection) {
       if (index !== 0) throw new Error(`Invalid memory index: ${index}`)
-      context[ContextField.Uint8Array].set(data, offset)
+      if (offset !== null) {
+        context[ContextField.Uint8Array].set(data, offset)
+      }
     }
 
     // Handle imports

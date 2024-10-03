@@ -51,9 +51,10 @@ const enum Mutable {
   Var,
 }
 
-const enum SegmentFlag {
-  Passive = 1 << 0,
-  MemoryIndex = 1 << 1,
+const enum DataMode {
+  ActiveZero,
+  Passive,
+  Active,
 }
 
 const enum NameSubsection {
@@ -67,7 +68,7 @@ export type LocalRun = readonly [count: number, type: Type]
 
 export type CodeItem = readonly [locals: readonly LocalRun[], codeStart: number, codeEnd: number]
 export type CustomItem = readonly [name: string, bytes: Uint8Array]
-export type DataItem = readonly [memory: number, offset: number, data: Uint8Array]
+export type DataItem = readonly [memory: number, offset: number | null, data: Uint8Array]
 export type ElementItem = readonly [offset: number, indices: readonly number[]]
 export type ExportItem = readonly [name: string, desc: Desc, index: number]
 export type GlobalItem = readonly [type: Type, mutable: Mutable, initializer: (globals: (number | bigint)[]) => number | bigint]
@@ -328,9 +329,10 @@ const parse = (bytes: Uint8Array): WASM => {
 
     else if (sectionType === Section.Data) {
       for (let i = 0, dataCount = readU32LEB(); i < dataCount; i++) {
-        const flags: SegmentFlag = readU32LEB()
-        const memory = flags & SegmentFlag.MemoryIndex ? readU32LEB() : 0
-        const offset = flags & SegmentFlag.Passive ? 0 : readConstantU32()
+        const mode: DataMode = readU32LEB()
+        if (mode > DataMode.Active) throw new CompileError('Unsupported data mode: ' + mode)
+        const memory = mode === DataMode.Active ? readU32LEB() : 0
+        const offset = mode === DataMode.Passive ? null : readConstantU32()
         const length = readU32LEB()
         dataSection.push([memory, offset, bytes.slice(ptr, ptr += length)])
       }
