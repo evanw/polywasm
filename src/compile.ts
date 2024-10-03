@@ -249,7 +249,7 @@ export const liveCastToWASM = (value: any, type: Type): number | bigint => {
   if (type === Type.I32) return value | 0
   if (type === Type.I64) return BigInt(value) & 0xFFFF_FFFF_FFFF_FFFFn
   if (type === Type.ExternRef) return value
-  throw new Error('Unsupported cast to type ' + type)
+  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 export const castToWASM = (code: string, type: Type): string => {
@@ -257,7 +257,7 @@ export const castToWASM = (code: string, type: Type): string => {
   if (type === Type.I32) return code + '|0'
   if (type === Type.I64) return `BigInt(${code})&0xFFFFFFFFFFFFFFFFn`
   if (type === Type.ExternRef) return code
-  throw new Error('Unsupported cast to type ' + type)
+  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 export const castToJS = (code: string, type: Type): string => {
@@ -265,7 +265,7 @@ export const castToJS = (code: string, type: Type): string => {
   if (type === Type.F32) return `Math.fround(${code})`
   if (type === Type.I64) return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${code})`
   if (type === Type.ExternRef) return code
-  throw new Error('Unsupported cast to type ' + type)
+  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 const enum MetaFlag {
@@ -495,7 +495,7 @@ const optimizeNode = compileOptimizations()
 export const compileCode = (
   funcs: Function[],
   funcTypes: FuncType[],
-  table: (Function | null)[] | undefined,
+  tables: (Function | null)[][],
   dataSegments: Uint8Array[],
   globals: (number | bigint)[],
   library: Library,
@@ -574,6 +574,16 @@ export const compileCode = (
     return 's' + stackSlot
   }
 
+  // Store each used table in a local variable
+  const usedTables: Record<number, boolean> = {}
+  const tableName = (index: number): string => {
+    if (!usedTables[index]) {
+      decls.push(`t${index}=t[${index}]`)
+      usedTables[index] = true
+    }
+    return 't' + index
+  }
+
   // Optimize the single-byte case using typed arrays
   const load8 = (field: ContextField.Int8Array | ContextField.Uint8Array, addr: number, offset: number): string => {
     return `c.${field}[${emit(addr)}${offset ? '+' + offset : ''}]`
@@ -613,14 +623,15 @@ export const compileCode = (
       }
       case Op.call_indirect: {
         const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
-        const typeIndex = ast[ptr + childCount + 2]
+        const tableIndex = ast[ptr + childCount + 2]
+        const typeIndex = ast[ptr + childCount + 3]
         const [argTypes, returnTypes] = typeSection[typeIndex]
         const args: string[] = []
         const func = emit(ast[ptr + 1])
         for (let i = 1; i <= childCount; i++) args.push(emit(ast[ptr + i + 1]))
-        const code = `t[${func}](${args})`
+        const code = tableName(tableIndex) + `[${func}](${args})`
         if (returnTypes.length < 2) return code
-        const slot = ast[ptr + childCount + 3]
+        const slot = ast[ptr + childCount + 4]
         const returns: string[] = []
         for (let i = 0; i < returnTypes.length; i++) returns.push(stackSlotName(slot + i))
         return `[${returns}]=${code}`
@@ -920,7 +931,7 @@ export const compileCode = (
   const decls: string[] = ['L', 'T']
   for (const [count, type] of locals) {
     for (let i = 0; i < count; i++) {
-      const name = 't' + decls.length
+      const name = 'l' + decls.length
       names.push(name)
       decls.push(name + (type === Type.I64 ? '=0n' : '=0'))
     }
@@ -1254,7 +1265,7 @@ export const compileCode = (
         case Op.call_indirect: {
           const typeIndex = readU32LEB()
           const tableIndex = readU32LEB()
-          if (tableIndex !== 0) throw new Error('Unsupported table index: ' + tableIndex)
+          if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
           if (!blocks[blocks.length - 1].isDead_) {
             const [argTypes, returnTypes] = typeSection[typeIndex]
             stackTop -= argTypes.length + 1
@@ -1263,6 +1274,7 @@ export const compileCode = (
             ast[astNextPtr++] = op | (argTypes.length << Pack.ChildCountShift)
             ast[astNextPtr++] = -(stackTop + argTypes.length + 1) // This is the function pointer
             for (let i = 1; i <= argTypes.length; i++) ast[astNextPtr++] = -(stackTop + i)
+            ast[astNextPtr++] = tableIndex // Append the table index to read from the correct table
             ast[astNextPtr++] = typeIndex // Append the type index to reconstruct the return count
             if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
             stackTop += returnTypes.length
@@ -1403,7 +1415,7 @@ export const compileCode = (
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
   const js = `return{${name}(${names.slice(0, argCount)}){var ${decls};${body}}}[${name}]`
-  return new Function('f', 'c', 't', 'd', 'g', 'l', js)(funcs, context, table, dataSegments, globals, library)
+  return new Function('f', 'c', 't', 'd', 'g', 'l', js)(funcs, context, tables, dataSegments, globals, library)
 }
 
 // This can pretty-print the expression subtree at "ptr" (for use with debugging)

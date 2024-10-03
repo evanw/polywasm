@@ -138,7 +138,7 @@ export class Instance {
     // Handle data
     const dataSegments: Uint8Array[] = []
     for (let [index, offset, data] of dataSection) {
-      if (index !== 0) throw new Error(`Invalid memory index: ${index}`)
+      if (index !== 0) throw new Error('Invalid memory index: ' + index)
       if (offset !== null) {
         context[ContextField.Uint8Array].set(data, offset)
         data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
@@ -179,7 +179,7 @@ export class Instance {
         return (funcs[index] = compileCode(
           funcs,
           funcTypes,
-          tables[0],
+          tables,
           dataSegments,
           globals,
           library,
