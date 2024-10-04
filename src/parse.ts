@@ -232,7 +232,7 @@ const parse = (bytes: Uint8Array): WASM => {
     else if (op === Op.global_get) {
       const index = readU32LEB()
       initializer = globals => {
-        if (index >= globals.length) throw new RangeError()
+        if (index >= globals.length) throw RangeError()
         return globals[index]
       }
     }

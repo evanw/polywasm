@@ -260,7 +260,7 @@ export const liveCastToWASM = (value: any, type: Type): number | bigint => {
   if (type === Type.I32) return value | 0
   if (type === Type.I64) return BigInt(value) & 0xFFFF_FFFF_FFFF_FFFFn
   if (type === Type.ExternRef) return value
-  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
+  throw Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 export const castToWASM = (code: string, type: Type): string => {
@@ -269,7 +269,7 @@ export const castToWASM = (code: string, type: Type): string => {
   if (type === Type.I64) return `BigInt(${code})&0xFFFFFFFFFFFFFFFFn`
   if (type === Type.ExternRef) return code
   if (type === Type.FuncRef) return `l.${/* @__KEY__ */ 'importLazyFunc_'}(${code})`
-  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
+  throw Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 export const castToJS = (code: string, type: Type): string => {
@@ -278,7 +278,7 @@ export const castToJS = (code: string, type: Type): string => {
   if (type === Type.I64) return `l.${/* @__KEY__ */ 'u64_to_s64_'}(${code})`
   if (type === Type.ExternRef) return code
   if (type === Type.FuncRef) return `l.${/* @__KEY__ */ 'exportLazyFunc_'}(${code})`
-  throw new Error('Unsupported cast to type: ' + formatHexByte(type))
+  throw Error('Unsupported cast to type: ' + formatHexByte(type))
 }
 
 const enum MetaFlag {
@@ -616,7 +616,7 @@ export const compileCode = (
   const usedTables: Record<number, boolean> = {}
   const tableName = (index: number): string => {
     if (!usedTables[index]) {
-      if (index >= tables.length) throw new Error('Invalid table index: ' + index)
+      if (index >= tables.length) throw Error('Invalid table index: ' + index)
       decls.push(`t${index}=t[${index}]`)
       usedTables[index] = true
     }
@@ -715,11 +715,11 @@ export const compileCode = (
       case Op.i64_store32: return store('Int32', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&0xFFFFFFFFn)`)
 
       case Op.memory_size: {
-        if (ast[ptr + 1]) throw new Error('Unsupported non-zero memory index')
+        if (ast[ptr + 1]) throw Error('Unsupported non-zero memory index')
         return `c.${ContextField.PageCount}`
       }
       case Op.memory_grow: {
-        if (ast[ptr + 2]) throw new Error('Unsupported non-zero memory index')
+        if (ast[ptr + 2]) throw Error('Unsupported non-zero memory index')
         return `c.${ContextField.PageGrow}(${emit(ast[ptr + 1])})`
       }
 
@@ -831,7 +831,7 @@ export const compileCode = (
 
       case Op.memory_init: return `c.${ContextField.Uint8Array}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
       case Op.data_drop: {
-        if (ast[ptr + 1] >= dataSegments.length) throw new Error('Invalid data index: ' + ast[ptr + 1])
+        if (ast[ptr + 1] >= dataSegments.length) throw Error('Invalid data index: ' + ast[ptr + 1])
         return `d[${ast[ptr + 1]}]=new Uint8Array`
       }
       case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
@@ -839,7 +839,7 @@ export const compileCode = (
 
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.elem_drop: {
-        if (ast[ptr + 1] >= elementSegments.length) throw new Error('Invalid element index: ' + ast[ptr + 1])
+        if (ast[ptr + 1] >= elementSegments.length) throw Error('Invalid element index: ' + ast[ptr + 1])
         return `e[${ast[ptr + 1]}]=[]`
       }
       case Op.table_copy: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},${tableName(ast[ptr + 5])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
@@ -1339,7 +1339,7 @@ export const compileCode = (
       case Op.call_indirect: {
         const typeIndex = readU32LEB()
         const tableIndex = readU32LEB()
-        if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
+        if (tableIndex >= tables.length) throw Error('Invalid table index: ' + tableIndex)
         if (!blocks[blocks.length - 1].isDead_) {
           const [argTypes, returnTypes] = typeSection[typeIndex]
           stackTop -= argTypes.length + 1
@@ -1360,7 +1360,7 @@ export const compileCode = (
       case Op.select_type: {
         if (op === Op.select_type) {
           const count = readU32LEB()
-          if (count !== 1) throw new Error('Unsupported select type count ' + count)
+          if (count !== 1) throw Error('Unsupported select type count ' + count)
           bytesPtr++ // Ignore the type
         }
         // Note: JS evaluation order is different than WASM evaluation order here
@@ -1428,8 +1428,8 @@ export const compileCode = (
         switch (op) {
           case Op.memory_init: {
             const index = readU32LEB()
-            if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
-            if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
+            if (bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Destination
+            if (index >= dataSegments.length) throw Error('Invalid passive data index: ' + index)
             if (!blocks[blocks.length - 1].isDead_) {
               // Note: JS evaluation order is different than WASM evaluation order here
               stackTop -= 2
@@ -1444,7 +1444,7 @@ export const compileCode = (
           }
 
           case Op.memory_copy:
-            if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
+            if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Source and destination
             if (!blocks[blocks.length - 1].isDead_) {
               stackTop -= 2
               astPtrs.push(astNextPtr)
@@ -1456,7 +1456,7 @@ export const compileCode = (
             break
 
           case Op.memory_fill:
-            if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
+            if (bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Destination
             if (!blocks[blocks.length - 1].isDead_) {
               // Note: JS evaluation order is different than WASM evaluation order here
               stackTop -= 2
@@ -1471,7 +1471,7 @@ export const compileCode = (
           case Op.table_init: {
             const element = readU32LEB()
             const table = readU32LEB()
-            if (element >= elementSegments.length) throw new Error('Invalid element index: ' + element)
+            if (element >= elementSegments.length) throw Error('Invalid element index: ' + element)
             if (!blocks[blocks.length - 1].isDead_) {
               stackTop -= 2
               astPtrs.push(astNextPtr)
@@ -1502,17 +1502,17 @@ export const compileCode = (
           }
 
           default:
-            throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
+            throw Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
         }
         break
 
       default:
-        throw new Error('Unsupported instruction: ' + formatHexByte(op))
+        throw Error('Unsupported instruction: ' + formatHexByte(op))
     }
   }
 
   // Each node only has 8 bits of storage for the output stack slot
-  if (stackLimit > 255) throw new Error('Deep stacks are not supported')
+  if (stackLimit > 255) throw Error('Deep stacks are not supported')
 
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))

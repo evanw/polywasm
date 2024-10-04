@@ -143,7 +143,7 @@ export const createLibrary = () => {
       if (fn === null) return fn
       const obj = exportedFuncs.get(fn)
       if (obj) return obj
-      throw new Error('Unexpected foreign function object')
+      throw Error('Unexpected foreign function object')
     },
     exportLazyFunc_(obj: LazyFunc | null): Function | null {
       if (obj === null) return null

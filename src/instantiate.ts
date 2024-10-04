@@ -143,7 +143,7 @@ export class Instance {
     // Handle memory
     const context = new Context
     const memory = context.memory_ = new Memory
-    if (memorySection.length > 1) throw new Error(`Unsupported memory count: ${memorySection.length}`)
+    if (memorySection.length > 1) throw Error(`Unsupported memory count: ${memorySection.length}`)
     if (memorySection.length > 0) {
       const [memoryMin, memoryMax] = memorySection[0]
       context.pageLimit_ = Math.min(memoryMax, 0xFFFF) // 32-bit WASM has at most 65535 pages
@@ -155,7 +155,7 @@ export class Instance {
     const grow = context[ContextField.PageGrow] = pagesDelta => growContext(context, pagesDelta)
     memory.grow = pagesDelta => {
       const pageCount = grow(pagesDelta)
-      if (pageCount < 0) throw new RangeError('Cannot grow past limit')
+      if (pageCount < 0) throw RangeError('Cannot grow past limit')
       return pageCount
     }
     resetContext(context, memory.buffer = new ArrayBuffer(context[ContextField.PageCount] << 16))
@@ -175,14 +175,14 @@ export class Instance {
         globals.push(liveCastToWASM(value, payload))
         globalTypes.push(payload)
       } else {
-        throw new Error(`Unsupported import type ${desc} for "${module}"."${name}"`)
+        throw Error(`Unsupported import type ${desc} for "${module}"."${name}"`)
       }
     }
 
     // Handle data
     const dataSegments: Uint8Array[] = []
     for (let [index, offset, data] of dataSection) {
-      if (index !== 0) throw new Error('Invalid memory index: ' + index)
+      if (index !== 0) throw Error('Invalid memory index: ' + index)
       if (offset !== null) {
         context[ContextField.Uint8Array].set(data, offset)
         data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
@@ -231,7 +231,7 @@ export class Instance {
       for (const index of indices) segment.push(index === null ? null : createLazyFunc(index))
       elementSegments.push(segment)
       if (tableIndex !== null && offset !== null) {
-        if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
+        if (tableIndex >= tables.length) throw Error('Invalid table index: ' + tableIndex)
         const table = tables[tableIndex]
         for (const value of segment) table[offset++] = value
       }
@@ -242,7 +242,7 @@ export class Instance {
       if (desc === Desc.Func) {
         exports[name] = library.exportLazyFunc_(createLazyFunc(index))!
       } else if (desc === Desc.Table) {
-        if (index >= tables.length) throw new Error('Invalid table index: ' + index)
+        if (index >= tables.length) throw Error('Invalid table index: ' + index)
         const table = tables[index]
         const value = new Table
         Object.defineProperty(value, 'length', {
@@ -259,7 +259,7 @@ export class Instance {
           table[i] = library.importLazyFunc_(fn)
         }
         value.grow = () => {
-          throw new Error('Unsupported operation "grow" on table ' + index)
+          throw Error('Unsupported operation "grow" on table ' + index)
         }
         exports[name] = value
       } else if (desc === Desc.Mem) {
@@ -273,7 +273,7 @@ export class Instance {
         })
         exports[name] = value
       } else {
-        throw new Error(`Unsupported export type ${desc} for "${name}"`)
+        throw Error(`Unsupported export type ${desc} for "${name}"`)
       }
     }
 

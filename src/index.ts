@@ -9,7 +9,7 @@ const instantiate = async (input: any, importObject?: WebAssembly.Imports): Prom
 
 const validate = (input: any): boolean => {
   if (!ArrayBuffer.isView(input) && !(input instanceof ArrayBuffer)) {
-    throw new TypeError('Invalid buffer source')
+    throw TypeError('Invalid buffer source')
   }
   try {
     new Module(input)
