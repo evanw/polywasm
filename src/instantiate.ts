@@ -1,6 +1,6 @@
 import { castToJS, castToWASM, compileCode, liveCastToWASM } from './compile'
 import { createLibrary, Library } from './library'
-import { Desc, FuncType, Module, Type, moduleMap } from './parse'
+import { Desc, FuncType, GlobalValue, Module, Type, moduleMap } from './parse'
 
 export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
   declare value: WebAssembly.ValueTypeMap[T]
@@ -117,7 +117,7 @@ export class Instance {
     const exports: WebAssembly.Exports = this.exports = Object.create(null)
     const funcs: Function[] = []
     const funcTypes: FuncType[] = []
-    const globals: (number | bigint)[] = []
+    const globals: GlobalValue[] = []
     const globalTypes: Type[] = []
     const lazyFuncs: Record<number, LazyFunc> = {}
     const tables: (LazyFunc | null)[][] = []
@@ -192,7 +192,7 @@ export class Instance {
 
     // Handle globals
     for (const [type, mutable, initializer] of globalSection) {
-      globals.push(initializer(globals))
+      globals.push(initializer(globals, createLazyFunc))
       globalTypes.push(type)
     }
 

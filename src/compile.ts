@@ -4,7 +4,7 @@
 import { Context, ContextField, LazyFunc } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
-import { formatHexByte, FuncType, TableItem, Type, WASM } from './parse'
+import { formatHexByte, FuncType, GlobalValue, TableItem, Type, WASM } from './parse'
 
 export enum Op {
   unreachable = 0x00,
@@ -535,7 +535,7 @@ export const compileCode = (
   tableSection: readonly TableItem[],
   dataSegments: Uint8Array[],
   elementSegments: (readonly (LazyFunc | null)[])[],
-  globals: (number | bigint)[],
+  globals: GlobalValue[],
   library: Library,
   context: Context,
   wasm: WASM,

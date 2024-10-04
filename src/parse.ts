@@ -6,6 +6,7 @@
 // https://webassembly.github.io/spec/core/binary/index.html
 
 import { Op } from './compile'
+import { LazyFunc } from './instantiate'
 
 const enum Section {
   Custom,
@@ -69,6 +70,13 @@ const enum NameSubsection {
   Local,
 }
 
+export type GlobalValue =
+  | null
+  | number
+  | bigint
+  | LazyFunc
+export type GlobalInitializer = (globals: readonly GlobalValue[], createLazyFunc: (index: number) => LazyFunc) => GlobalValue
+
 export type FuncType = readonly [argTypes: readonly Type[], returnTypes: readonly Type[]]
 export type LocalRun = readonly [count: number, type: Type]
 
@@ -77,7 +85,7 @@ export type CustomItem = readonly [name: string, bytes: Uint8Array]
 export type DataItem = readonly [memory: number, offset: number | null, data: Uint8Array]
 export type ElementItem = readonly [tableIndex: number | null, offset: number | null, indices: readonly (number | null)[]]
 export type ExportItem = readonly [name: string, desc: Desc, index: number]
-export type GlobalItem = readonly [type: Type, mutable: Mutable, initializer: (globals: (number | bigint)[]) => number | bigint]
+export type GlobalItem = readonly [type: Type, mutable: Mutable, initializer: GlobalInitializer]
 export type ImportItem =
   | readonly [module: string, name: string, desc: Desc.Func, index: number]
   | readonly [module: string, name: string, desc: Desc.Table, type: Type, min: number, max: number]
@@ -193,28 +201,39 @@ const parse = (bytes: Uint8Array): WASM => {
     return value
   }
 
-  const readInitializer = (): (globals: (number | bigint)[]) => number | bigint => {
+  const readInitializer = (type: Type): GlobalInitializer => {
     const op: Op = bytes[ptr++]
-    let initializer: (globals: (number | bigint)[]) => number | bigint
-    if (op === Op.i32_const) {
+    let initializer: GlobalInitializer
+    if (op === Op.i32_const && type === Type.I32) {
       const value = readI32LEB()
       initializer = () => value
     }
-    else if (op === Op.i64_const) {
+    else if (op === Op.i64_const && type === Type.I64) {
       const value = readI64LEB()
       initializer = () => value
     }
-    else if (op === Op.f32_const) {
+    else if (op === Op.f32_const && type === Type.F32) {
       const value = readF32()
       initializer = () => value
     }
-    else if (op === Op.f64_const) {
+    else if (op === Op.f64_const && type === Type.F64) {
       const value = readF64()
       initializer = () => value
     }
+    else if (op === Op.ref_null && (type === Type.FuncRef || type === Type.ExternRef)) {
+      ptr++ // Ignore the type
+      initializer = () => null
+    }
+    else if (op === Op.ref_func && type === Type.FuncRef) {
+      const index = readU32LEB()
+      initializer = (_, createLazyFunc) => createLazyFunc(index)
+    }
     else if (op === Op.global_get) {
       const index = readU32LEB()
-      initializer = globals => globals[index]
+      initializer = globals => {
+        if (index >= globals.length) throw new RangeError()
+        return globals[index]
+      }
     }
     else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
     if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
@@ -303,7 +322,7 @@ const parse = (bytes: Uint8Array): WASM => {
       for (let i = 0, globalCount = readU32LEB(); i < globalCount; i++) {
         const type: Type = bytes[ptr++]
         const mutable = bytes[ptr++]
-        const initializer = readInitializer()
+        const initializer = readInitializer(type)
         globalSection.push([type, mutable, initializer])
       }
     }
