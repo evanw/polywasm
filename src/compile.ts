@@ -297,203 +297,203 @@ const enum MetaFlag {
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
 // have a regular stack-based structure. This is translated into a register-based
 // structure internally, where a "register" is a JavaScript local variable.
-const metaTable: Record<number, number> = {}
+const metaTable: Readonly<Record<number, number>> = {
+  [Op.nop]: MetaFlag.Omit | MetaFlag.Simple,
+  [Op.drop]: 1 | MetaFlag.Omit | MetaFlag.Simple,
 
-metaTable[Op.nop] = MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.drop] = 1 | MetaFlag.Omit | MetaFlag.Simple
+  [Op.local_get]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.local_set]: 1 | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.local_tee]: 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.global_get]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.global_set]: 1 | MetaFlag.HasIndex | MetaFlag.Simple,
 
-metaTable[Op.local_get] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.local_set] = 1 | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.local_tee] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.global_get] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.global_set] = 1 | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.table_get]: 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.table_set]: 2 | MetaFlag.HasIndex | MetaFlag.Simple,
 
-metaTable[Op.table_get] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.table_set] = 2 | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.i32_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f32_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f64_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load32_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load32_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f32_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f64_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store8]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store16]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store8]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store16]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store32]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
 
-metaTable[Op.i32_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f32_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f64_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load32_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load32_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f32_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f64_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store8] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store16] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store8] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store16] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store32] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.memory_size]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.memory_grow]: 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
 
-metaTable[Op.memory_size] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.memory_grow] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.i32_eqz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_eq]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_ne]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_lt_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_lt_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32,
+  [Op.i32_gt_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_gt_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32,
+  [Op.i32_le_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_le_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32,
+  [Op.i32_ge_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i32_ge_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32,
 
-metaTable[Op.i32_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
-metaTable[Op.i32_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
-metaTable[Op.i32_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
-metaTable[Op.i32_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i32_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToU32
+  [Op.i64_eqz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_eq]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i64_ne]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i64_lt_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64,
+  [Op.i64_lt_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i64_gt_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64,
+  [Op.i64_gt_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i64_le_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64,
+  [Op.i64_le_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.i64_ge_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64,
+  [Op.i64_ge_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
 
-metaTable[Op.i64_eqz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_lt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
-metaTable[Op.i64_lt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_gt_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
-metaTable[Op.i64_gt_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_le_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
-metaTable[Op.i64_le_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.i64_ge_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt | MetaFlag.ToS64
-metaTable[Op.i64_ge_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+  [Op.f32_eq]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f32_ne]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f32_lt]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f32_gt]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f32_le]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f32_ge]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
 
-metaTable[Op.f32_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f32_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f32_lt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f32_gt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f32_le] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f32_ge] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+  [Op.f64_eq]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f64_ne]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f64_lt]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f64_gt]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f64_le]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.f64_ge]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
 
-metaTable[Op.f64_eq] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f64_ne] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f64_lt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f64_gt] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f64_le] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.f64_ge] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
+  [Op.i32_clz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_ctz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_popcnt]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_add]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_sub]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_mul]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_div_s]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_div_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32,
+  [Op.i32_rem_s]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_rem_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32,
+  [Op.i32_and]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_or]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_xor]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_shl]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_shr_s]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_shr_u]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_rotl]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_rotr]: 2 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.i32_clz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_ctz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_popcnt] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_add] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_div_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_div_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32
-metaTable[Op.i32_rem_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToU32
-metaTable[Op.i32_and] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_or] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_xor] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_shl] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_shr_s] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_shr_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_rotl] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_rotr] = 2 | MetaFlag.Push | MetaFlag.Simple
+  [Op.i64_clz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_ctz]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_popcnt]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_add]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_sub]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_mul]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_div_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64,
+  [Op.i64_div_u]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_rem_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64,
+  [Op.i64_rem_u]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_and]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_or]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_xor]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_shl]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63,
+  [Op.i64_shr_s]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63,
+  [Op.i64_shr_u]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63,
+  [Op.i64_rotl]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63,
+  [Op.i64_rotr]: 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63,
 
-metaTable[Op.i64_clz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_ctz] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_popcnt] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_add] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_div_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
-metaTable[Op.i64_div_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_rem_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
-metaTable[Op.i64_rem_u] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_and] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_or] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_xor] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_shl] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
-metaTable[Op.i64_shr_s] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
-metaTable[Op.i64_shr_u] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
-metaTable[Op.i64_rotl] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
-metaTable[Op.i64_rotr] = 2 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.And63
+  [Op.f32_abs]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_neg]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_ceil]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_floor]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_trunc]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_nearest]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_sqrt]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_add]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_sub]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_mul]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_div]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_min]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_max]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_copysign]: 2 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.f32_abs] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_neg] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_ceil] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_floor] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_trunc] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_nearest] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_sqrt] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_add] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_div] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_min] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_max] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_copysign] = 2 | MetaFlag.Push | MetaFlag.Simple
+  [Op.f64_abs]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_neg]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_ceil]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_floor]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_trunc]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_nearest]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_sqrt]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_add]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_sub]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_mul]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_div]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_min]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_max]: 2 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_copysign]: 2 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.f64_abs] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_neg] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_ceil] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_floor] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_trunc] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_nearest] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_sqrt] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_add] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_sub] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_mul] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_div] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_min] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_max] = 2 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_copysign] = 2 | MetaFlag.Push | MetaFlag.Simple
+  [Op.i32_wrap_i64]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_f32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_f32_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_f64_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_f64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_extend_i32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_extend_i32_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_f32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_f32_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_f64_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_f64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_convert_i32_s]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple,
+  [Op.f32_convert_i32_u]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32,
+  [Op.f32_convert_i64_s]: 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64,
+  [Op.f32_convert_i64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_demote_f64]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple,
+  [Op.f64_convert_i32_s]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple,
+  [Op.f64_convert_i32_u]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32,
+  [Op.f64_convert_i64_s]: 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64,
+  [Op.f64_convert_i64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_promote_f32]: 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple,
+  [Op.i32_reinterpret_f32]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_reinterpret_f64]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f32_reinterpret_i32]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.f64_reinterpret_i64]: 1 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.i32_wrap_i64] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_extend_i32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_extend_i32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_convert_i32_s] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f32_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32
-metaTable[Op.f32_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
-metaTable[Op.f32_convert_i64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_demote_f64] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f64_convert_i32_s] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.f64_convert_i32_u] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple | MetaFlag.ToU32
-metaTable[Op.f64_convert_i64_s] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.ToS64
-metaTable[Op.f64_convert_i64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_promote_f32] = 1 | MetaFlag.Push | MetaFlag.Omit | MetaFlag.Simple
-metaTable[Op.i32_reinterpret_f32] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_reinterpret_f64] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f32_reinterpret_i32] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.f64_reinterpret_i64] = 1 | MetaFlag.Push | MetaFlag.Simple
+  [Op.i32_extend8_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_extend16_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_extend8_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_extend16_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_extend32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.i32_extend8_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_extend16_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_extend8_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_extend16_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_extend32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+  [Op.ref_null]: MetaFlag.Push | MetaFlag.HasHint | MetaFlag.Simple,
+  [Op.ref_is_null]: 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
+  [Op.ref_func]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
 
-metaTable[Op.ref_null] = MetaFlag.Push | MetaFlag.HasHint | MetaFlag.Simple
-metaTable[Op.ref_is_null] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
-metaTable[Op.ref_func] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.i32_trunc_sat_f32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_sat_f32_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_sat_f64_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i32_trunc_sat_f64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_sat_f32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_sat_f32_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_sat_f64_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
+  [Op.i64_trunc_sat_f64_u]: 1 | MetaFlag.Push | MetaFlag.Simple,
 
-metaTable[Op.i32_trunc_sat_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_sat_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_sat_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i32_trunc_sat_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_sat_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_sat_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_sat_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
-metaTable[Op.i64_trunc_sat_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
-
-metaTable[Op.data_drop] = MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.elem_drop] = MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.table_grow] = 2 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.table_size] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.table_fill] = 3 | MetaFlag.HasIndex | MetaFlag.Simple
+  [Op.data_drop]: MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.elem_drop]: MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.table_grow]: 2 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.table_size]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.table_fill]: 3 | MetaFlag.HasIndex | MetaFlag.Simple,
+}
 
 // WebAssembly bytecode is decoded into an AST so that it can be optimized
 // before converting it to JavaScript. The AST is stored as numbers in an
