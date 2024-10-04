@@ -1125,20 +1125,9 @@ export const compileCode = (
     returnCount_: returnTypes.length,
   }]
 
-  // This is the slot for the value on the top of the stack. Note that the
-  // first stack slot is 1 because slot 0 means "no stack slot".
-  let stackTop = 0
-
-  // Scan over WebAssembly opcodes and compile them to JavaScript as we go
-  let bytesPtr = codeStart
-  let nextLabel = 0
-  let body = 'b0:{'
-
-  while (bytesPtr < codeEnd) {
-    let op = bytes[bytesPtr++]
+  const handleSimpleOp = (op: number): boolean => {
     const flags: MetaFlag = metaTable[op] | 0
-
-    // Most opcodes can be decoded automatically using a table lookup
+    if (!(flags & MetaFlag.Simple)) return false
     if (flags & MetaFlag.Simple) {
       if (!blocks[blocks.length - 1].isDead_) {
         const childCount = flags & MetaFlag.PopMask
@@ -1173,266 +1162,283 @@ export const compileCode = (
         if (flags & MetaFlag.HasIndex) readU32LEB()
       }
     }
+    return true
+  }
+
+  // This is the slot for the value on the top of the stack. Note that the
+  // first stack slot is 1 because slot 0 means "no stack slot".
+  let stackTop = 0
+
+  // Scan over WebAssembly opcodes and compile them to JavaScript as we go
+  let bytesPtr = codeStart
+  let nextLabel = 0
+  let body = 'b0:{'
+
+  while (bytesPtr < codeEnd) {
+    let op = bytes[bytesPtr++]
+
+    // Most opcodes can be decoded automatically using a table lookup
+    if (handleSimpleOp(op)) {
+      continue
+    }
 
     // A few opcodes need special handling and can't be decoded with a table
-    else {
-      switch (op) {
-        case Op.unreachable: {
-          const block = blocks[blocks.length - 1]
-          finalizeBasicBlock()
-          if (!block.isDead_) {
-            body += '"unreachable"();'
-            block.isDead_ = true
-          }
-          break
+    switch (op) {
+      case Op.unreachable: {
+        const block = blocks[blocks.length - 1]
+        finalizeBasicBlock()
+        if (!block.isDead_) {
+          body += '"unreachable"();'
+          block.isDead_ = true
         }
+        break
+      }
 
-        case Op.block:
-          finalizeBasicBlock()
-          if (pushBlock(BlockKind.Normal) < 0) body += '{'
-          break
+      case Op.block:
+        finalizeBasicBlock()
+        if (pushBlock(BlockKind.Normal) < 0) body += '{'
+        break
 
-        case Op.loop: {
-          finalizeBasicBlock()
-          const label = pushBlock(BlockKind.Loop)
-          body += label < 0 ? 'for(;;){' : `case ${label}:`
-          break
+      case Op.loop: {
+        finalizeBasicBlock()
+        const label = pushBlock(BlockKind.Loop)
+        body += label < 0 ? 'for(;;){' : `case ${label}:`
+        break
+      }
+
+      case Op.if: {
+        if (!blocks[blocks.length - 1].isDead_) {
+          pushUnary(blocks.length < blockDepthLimit ? Op.BOOL : Op.BOOL_NOT)
         }
+        const test = finalizeBasicBlock(true)
+        const label = pushBlock(BlockKind.IfElse)
+        body += label < 0 ? `if(${test}){` : `if(${test}){L=${label};continue}`
+        break
+      }
 
-        case Op.if: {
-          if (!blocks[blocks.length - 1].isDead_) {
-            pushUnary(blocks.length < blockDepthLimit ? Op.BOOL : Op.BOOL_NOT)
-          }
-          const test = finalizeBasicBlock(true)
-          const label = pushBlock(BlockKind.IfElse)
-          body += label < 0 ? `if(${test}){` : `if(${test}){L=${label};continue}`
-          break
+      case Op.else: {
+        finalizeBasicBlock()
+        const index = blocks.length - 1, block = blocks[index]
+        jump(index)
+        body += index < blockDepthLimit ? '}else{' : `case ${block.labelContinueOrElse_}:`
+        block.kind_ = BlockKind.Normal // Don't emit the "else" label on "end"
+        stackTop = block.parentStackTop_ + block.argCount_
+        block.isDead_ = false
+        break
+      }
+
+      case Op.end: {
+        finalizeBasicBlock()
+        const index = blocks.length - 1, block = blocks[index]
+        if (block.kind_ !== BlockKind.IfElse) block.labelContinueOrElse_ = 0 // Emit the "else" label if there was no "else" branch
+        block.kind_ = BlockKind.Normal // Emit "break" not "continue"
+        jump(index)
+        if (index < blockDepthLimit) {
+          body += `}`
+        } else {
+          if (block.labelContinueOrElse_) body += `case ${block.labelContinueOrElse_}:`
+          body += `case ${block.labelBreak_}:`
+          if (index == blockDepthLimit) body += `}break}`
         }
+        stackTop = block.parentStackTop_ + block.returnCount_
+        blocks.pop()
+        break
+      }
 
-        case Op.else: {
-          finalizeBasicBlock()
-          const index = blocks.length - 1, block = blocks[index]
-          jump(index)
-          body += index < blockDepthLimit ? '}else{' : `case ${block.labelContinueOrElse_}:`
-          block.kind_ = BlockKind.Normal // Don't emit the "else" label on "end"
-          stackTop = block.parentStackTop_ + block.argCount_
-          block.isDead_ = false
-          break
-        }
+      case Op.br:
+        finalizeBasicBlock()
+        jump()
+        blocks[blocks.length - 1].isDead_ = true
+        break
 
-        case Op.end: {
-          finalizeBasicBlock()
-          const index = blocks.length - 1, block = blocks[index]
-          if (block.kind_ !== BlockKind.IfElse) block.labelContinueOrElse_ = 0 // Emit the "else" label if there was no "else" branch
-          block.kind_ = BlockKind.Normal // Emit "break" not "continue"
-          jump(index)
-          if (index < blockDepthLimit) {
-            body += `}`
-          } else {
-            if (block.labelContinueOrElse_) body += `case ${block.labelContinueOrElse_}:`
-            body += `case ${block.labelBreak_}:`
-            if (index == blockDepthLimit) body += `}break}`
-          }
-          stackTop = block.parentStackTop_ + block.returnCount_
-          blocks.pop()
-          break
-        }
+      case Op.br_if: {
+        if (!blocks[blocks.length - 1].isDead_) pushUnary(Op.BOOL)
+        const test = finalizeBasicBlock(true)
+        body += `if(${test}){`
+        jump()
+        body += '}'
+        break
+      }
 
-        case Op.br:
-          finalizeBasicBlock()
+      case Op.br_table: {
+        const test = finalizeBasicBlock(true)
+        body += `switch(${test}){`
+        for (let i = 0, tableCount = readU32LEB(); i < tableCount; i++) {
+          body += `case ${i}:`
           jump()
-          blocks[blocks.length - 1].isDead_ = true
-          break
+        }
+        body += 'default:'
+        jump()
+        body += '}'
+        blocks[blocks.length - 1].isDead_ = true
+        break
+      }
 
-        case Op.br_if: {
-          if (!blocks[blocks.length - 1].isDead_) pushUnary(Op.BOOL)
-          const test = finalizeBasicBlock(true)
-          body += `if(${test}){`
-          jump()
-          body += '}'
+      case Op.return:
+        finalizeBasicBlock()
+        jump(0)
+        blocks[blocks.length - 1].isDead_ = true
+        break
+
+      case Op.call: {
+        const funcIndex = readU32LEB()
+        if (!blocks[blocks.length - 1].isDead_) {
+          const [argTypes, returnTypes] = funcTypes[funcIndex]
+          stackTop -= argTypes.length
+          astPtrs.push(astNextPtr)
+          if (returnTypes.length === 1) op |= (stackTop + 1) << Pack.OutSlotShift // Only single-return functions can be inlined
+          ast[astNextPtr++] = op | (argTypes.length << Pack.ChildCountShift)
+          for (let i = 1; i <= argTypes.length; i++) ast[astNextPtr++] = -(stackTop + i)
+          ast[astNextPtr++] = funcIndex // Append the function index to reconstruct the return count
+          if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
+          stackTop += returnTypes.length
+        }
+        break
+      }
+
+      case Op.call_indirect: {
+        const typeIndex = readU32LEB()
+        const tableIndex = readU32LEB()
+        if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
+        if (!blocks[blocks.length - 1].isDead_) {
+          const [argTypes, returnTypes] = typeSection[typeIndex]
+          stackTop -= argTypes.length + 1
+          astPtrs.push(astNextPtr)
+          if (returnTypes.length === 1) op |= (stackTop + 1) << Pack.OutSlotShift // Only single-return functions can be inlined
+          ast[astNextPtr++] = op | (argTypes.length << Pack.ChildCountShift)
+          ast[astNextPtr++] = -(stackTop + argTypes.length + 1) // This is the function pointer
+          for (let i = 1; i <= argTypes.length; i++) ast[astNextPtr++] = -(stackTop + i)
+          ast[astNextPtr++] = tableIndex // Append the table index to read from the correct table
+          ast[astNextPtr++] = typeIndex // Append the type index to reconstruct the return count
+          if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
+          stackTop += returnTypes.length
+        }
+        break
+      }
+
+      case Op.select: {
+        // Note: JS evaluation order is different than WASM evaluation order here
+        if (!blocks[blocks.length - 1].isDead_) {
+          pushUnary(Op.BOOL)
+          stackTop -= 2
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = -(stackTop + 2)
+          ast[astNextPtr++] = -stackTop
+          ast[astNextPtr++] = -(stackTop + 1)
+        }
+        break
+      }
+
+      case Op.i32_const:
+        if (!blocks[blocks.length - 1].isDead_) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = readI32LEB() // Store the constant inline
+        } else {
+          readI32LEB()
+        }
+        break
+
+      case Op.i64_const:
+        if (!blocks[blocks.length - 1].isDead_) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = constants.length // Store an index to the constant
+          constants.push(readI64LEB())
+        } else {
+          readI64LEB()
+        }
+        break
+
+      case Op.f32_const:
+        if (!blocks[blocks.length - 1].isDead_) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = bytesPtr // Store the offset of the constant in the file
+        }
+        bytesPtr += 4
+        break
+
+      case Op.f64_const:
+        if (!blocks[blocks.length - 1].isDead_) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
+          ast[astNextPtr++] = bytesPtr // Store the offset of the constant in the file
+        }
+        bytesPtr += 8
+        break
+
+      case 0xFC:
+        // This is a prefix for a subset of instructions
+        op = 0xFC00 | bytes[bytesPtr++]
+
+        if (op <= Op.i64_trunc_sat_f64_u) {
+          if (!blocks[blocks.length - 1].isDead_) {
+            pushUnary(op)
+          }
           break
         }
 
-        case Op.br_table: {
-          const test = finalizeBasicBlock(true)
-          body += `switch(${test}){`
-          for (let i = 0, tableCount = readU32LEB(); i < tableCount; i++) {
-            body += `case ${i}:`
-            jump()
-          }
-          body += 'default:'
-          jump()
-          body += '}'
-          blocks[blocks.length - 1].isDead_ = true
-          break
-        }
-
-        case Op.return:
-          finalizeBasicBlock()
-          jump(0)
-          blocks[blocks.length - 1].isDead_ = true
-          break
-
-        case Op.call: {
-          const funcIndex = readU32LEB()
-          if (!blocks[blocks.length - 1].isDead_) {
-            const [argTypes, returnTypes] = funcTypes[funcIndex]
-            stackTop -= argTypes.length
-            astPtrs.push(astNextPtr)
-            if (returnTypes.length === 1) op |= (stackTop + 1) << Pack.OutSlotShift // Only single-return functions can be inlined
-            ast[astNextPtr++] = op | (argTypes.length << Pack.ChildCountShift)
-            for (let i = 1; i <= argTypes.length; i++) ast[astNextPtr++] = -(stackTop + i)
-            ast[astNextPtr++] = funcIndex // Append the function index to reconstruct the return count
-            if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
-            stackTop += returnTypes.length
-          }
-          break
-        }
-
-        case Op.call_indirect: {
-          const typeIndex = readU32LEB()
-          const tableIndex = readU32LEB()
-          if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
-          if (!blocks[blocks.length - 1].isDead_) {
-            const [argTypes, returnTypes] = typeSection[typeIndex]
-            stackTop -= argTypes.length + 1
-            astPtrs.push(astNextPtr)
-            if (returnTypes.length === 1) op |= (stackTop + 1) << Pack.OutSlotShift // Only single-return functions can be inlined
-            ast[astNextPtr++] = op | (argTypes.length << Pack.ChildCountShift)
-            ast[astNextPtr++] = -(stackTop + argTypes.length + 1) // This is the function pointer
-            for (let i = 1; i <= argTypes.length; i++) ast[astNextPtr++] = -(stackTop + i)
-            ast[astNextPtr++] = tableIndex // Append the table index to read from the correct table
-            ast[astNextPtr++] = typeIndex // Append the type index to reconstruct the return count
-            if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
-            stackTop += returnTypes.length
-          }
-          break
-        }
-
-        case Op.select: {
-          // Note: JS evaluation order is different than WASM evaluation order here
-          if (!blocks[blocks.length - 1].isDead_) {
-            pushUnary(Op.BOOL)
-            stackTop -= 2
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-            ast[astNextPtr++] = -(stackTop + 2)
-            ast[astNextPtr++] = -stackTop
-            ast[astNextPtr++] = -(stackTop + 1)
-          }
-          break
-        }
-
-        case Op.i32_const:
-          if (!blocks[blocks.length - 1].isDead_) {
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
-            ast[astNextPtr++] = readI32LEB() // Store the constant inline
-          } else {
-            readI32LEB()
-          }
-          break
-
-        case Op.i64_const:
-          if (!blocks[blocks.length - 1].isDead_) {
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
-            ast[astNextPtr++] = constants.length // Store an index to the constant
-            constants.push(readI64LEB())
-          } else {
-            readI64LEB()
-          }
-          break
-
-        case Op.f32_const:
-          if (!blocks[blocks.length - 1].isDead_) {
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
-            ast[astNextPtr++] = bytesPtr // Store the offset of the constant in the file
-          }
-          bytesPtr += 4
-          break
-
-        case Op.f64_const:
-          if (!blocks[blocks.length - 1].isDead_) {
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
-            ast[astNextPtr++] = bytesPtr // Store the offset of the constant in the file
-          }
-          bytesPtr += 8
-          break
-
-        case 0xFC:
-          // This is a prefix for a subset of instructions
-          op = 0xFC00 | bytes[bytesPtr++]
-
-          if (op <= Op.i64_trunc_sat_f64_u) {
+        switch (op) {
+          case Op.memory_init: {
+            const index = readU32LEB()
+            if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
+            if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
             if (!blocks[blocks.length - 1].isDead_) {
-              pushUnary(op)
+              // Note: JS evaluation order is different than WASM evaluation order here
+              stackTop -= 2
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -(stackTop + 1)
+              ast[astNextPtr++] = -(stackTop + 2)
+              ast[astNextPtr++] = -stackTop
+              ast[astNextPtr++] = index
             }
             break
           }
 
-          switch (op) {
-            case Op.memory_init: {
-              const index = readU32LEB()
-              if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
-              if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
-              if (!blocks[blocks.length - 1].isDead_) {
-                // Note: JS evaluation order is different than WASM evaluation order here
-                stackTop -= 2
-                astPtrs.push(astNextPtr)
-                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-                ast[astNextPtr++] = -(stackTop + 1)
-                ast[astNextPtr++] = -(stackTop + 2)
-                ast[astNextPtr++] = -stackTop
-                ast[astNextPtr++] = index
-              }
-              break
-            }
-
-            case Op.data_drop: {
-              const index = readU32LEB()
-              if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
-              astPtrs.push(astNextPtr)
-              ast[astNextPtr++] = op
-              ast[astNextPtr++] = index
-              break
-            }
-
-            case Op.memory_copy:
-              if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
-              if (!blocks[blocks.length - 1].isDead_) {
-                stackTop -= 2
-                astPtrs.push(astNextPtr)
-                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-                ast[astNextPtr++] = -stackTop
-                ast[astNextPtr++] = -(stackTop + 1)
-                ast[astNextPtr++] = -(stackTop + 2)
-              }
-              break
-
-            case Op.memory_fill:
-              if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
-              if (!blocks[blocks.length - 1].isDead_) {
-                // Note: JS evaluation order is different than WASM evaluation order here
-                stackTop -= 2
-                astPtrs.push(astNextPtr)
-                ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
-                ast[astNextPtr++] = -(stackTop + 1)
-                ast[astNextPtr++] = -stackTop
-                ast[astNextPtr++] = -(stackTop + 2)
-              }
-              break
-
-            default:
-              throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
+          case Op.data_drop: {
+            const index = readU32LEB()
+            if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
+            astPtrs.push(astNextPtr)
+            ast[astNextPtr++] = op
+            ast[astNextPtr++] = index
+            break
           }
-          break
 
-        default:
-          throw new Error('Unsupported instruction: ' + formatHexByte(op))
-      }
+          case Op.memory_copy:
+            if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
+            if (!blocks[blocks.length - 1].isDead_) {
+              stackTop -= 2
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -stackTop
+              ast[astNextPtr++] = -(stackTop + 1)
+              ast[astNextPtr++] = -(stackTop + 2)
+            }
+            break
+
+          case Op.memory_fill:
+            if (bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Destination
+            if (!blocks[blocks.length - 1].isDead_) {
+              // Note: JS evaluation order is different than WASM evaluation order here
+              stackTop -= 2
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -(stackTop + 1)
+              ast[astNextPtr++] = -stackTop
+              ast[astNextPtr++] = -(stackTop + 2)
+            }
+            break
+
+          default:
+            throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
+        }
+        break
+
+      default:
+        throw new Error('Unsupported instruction: ' + formatHexByte(op))
     }
   }
 
