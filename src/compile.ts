@@ -601,6 +601,7 @@ export const compileCode = (
   const usedTables: Record<number, boolean> = {}
   const tableName = (index: number): string => {
     if (!usedTables[index]) {
+      if (index >= tables.length) throw new Error('Invalid table index: ' + index)
       decls.push(`t${index}=t[${index}]`)
       usedTables[index] = true
     }
@@ -667,14 +668,8 @@ export const compileCode = (
       case Op.global_get: return `g[${ast[ptr + 1]}]`
       case Op.global_set: return `g[${ast[ptr + 2]}]=${emit(ast[ptr + 1])}`
 
-      case Op.table_get: {
-        if (ast[ptr + 2] >= tables.length) throw new Error('Invalid table index: ' + ast[ptr + 2])
-        return tableName(ast[ptr + 2]) + `[${emit(ast[ptr + 1])}]`
-      }
-      case Op.table_set: {
-        if (ast[ptr + 3] >= tables.length) throw new Error('Invalid table index: ' + ast[ptr + 3])
-        return tableName(ast[ptr + 3]) + `[${emit(ast[ptr + 1])}]=${emit(ast[ptr + 2])}`
-      }
+      case Op.table_get: return tableName(ast[ptr + 2]) + `[${emit(ast[ptr + 1])}]`
+      case Op.table_set: return tableName(ast[ptr + 3]) + `[${emit(ast[ptr + 1])}]=${emit(ast[ptr + 2])}`
 
       case Op.i32_load: return load('Int32', ast[ptr + 1], ast[ptr + 2])
       case Op.U32_LOAD: return load('Uint32', ast[ptr + 1], ast[ptr + 2])
