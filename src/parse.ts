@@ -76,14 +76,15 @@ export type GlobalValue =
   | bigint
   | LazyFunc
 export type GlobalInitializer = (globals: readonly GlobalValue[], createLazyFunc: (index: number) => LazyFunc) => GlobalValue
+export type OffsetInitializer = (globals: readonly GlobalValue[]) => number
 
 export type FuncType = readonly [argTypes: readonly Type[], returnTypes: readonly Type[]]
 export type LocalRun = readonly [count: number, type: Type]
 
 export type CodeItem = readonly [locals: readonly LocalRun[], codeStart: number, codeEnd: number]
 export type CustomItem = readonly [name: string, bytes: Uint8Array]
-export type DataItem = readonly [memory: number, offset: number | null, data: Uint8Array]
-export type ElementItem = readonly [tableIndex: number | null, offset: number | null, indices: readonly (number | null)[]]
+export type DataItem = readonly [memory: number, initializer: OffsetInitializer | null, data: Uint8Array]
+export type ElementItem = readonly [tableIndex: number | null, initializer: OffsetInitializer | null, indices: readonly (number | null)[]]
 export type ExportItem = readonly [name: string, desc: Desc, index: number]
 export type GlobalItem = readonly [type: Type, mutable: Mutable, initializer: GlobalInitializer]
 export type ImportItem =
@@ -180,13 +181,23 @@ const parse = (bytes: Uint8Array): WASM => {
     return [readU32LEB(), kind === LimitsKind.OnlyMin ? Infinity : readU32LEB()]
   }
 
-  const readConstantU32 = (): number => {
+  const readConstantU32 = (): OffsetInitializer => {
     const op: Op = bytes[ptr++]
-    let value: number
-    if (op === Op.i32_const) value = readU32LEB()
+    let initializer: OffsetInitializer
+    if (op === Op.i32_const) {
+      const value = readU32LEB()
+      initializer = () => value
+    }
+    else if (op === Op.global_get) {
+      const index = readU32LEB()
+      initializer = globals => {
+        if (index >= globals.length) throw RangeError()
+        return globals[index] as number
+      }
+    }
     else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
     if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
-    return value
+    return initializer
   }
 
   const readConstantFuncIndex = (): number | null => {

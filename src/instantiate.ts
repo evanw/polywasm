@@ -179,21 +179,21 @@ export class Instance {
       }
     }
 
-    // Handle data
-    const dataSegments: Uint8Array[] = []
-    for (let [index, offset, data] of dataSection) {
-      if (index !== 0) throw Error('Invalid memory index: ' + index)
-      if (offset !== null) {
-        context[ContextField.Uint8Array].set(data, offset)
-        data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
-      }
-      dataSegments.push(data)
-    }
-
     // Handle globals
     for (const [type, mutable, initializer] of globalSection) {
       globals.push(initializer(globals, createLazyFunc))
       globalTypes.push(type)
+    }
+
+    // Handle data
+    const dataSegments: Uint8Array[] = []
+    for (let [index, initializer, data] of dataSection) {
+      if (index !== 0) throw Error('Invalid memory index: ' + index)
+      if (initializer !== null) {
+        context[ContextField.Uint8Array].set(data, initializer(globals))
+        data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
+      }
+      dataSegments.push(data)
     }
 
     // Handle code
@@ -226,13 +226,14 @@ export class Instance {
       for (let i = 0; i < min; i++) table.push(null)
       tables.push(table)
     }
-    for (let [tableIndex, offset, indices] of elementSection) {
+    for (let [tableIndex, initializer, indices] of elementSection) {
       const segment: (LazyFunc | null)[] = []
       for (const index of indices) segment.push(index === null ? null : createLazyFunc(index))
       elementSegments.push(segment)
-      if (tableIndex !== null && offset !== null) {
+      if (tableIndex !== null && initializer !== null) {
         if (tableIndex >= tables.length) throw Error('Invalid table index: ' + tableIndex)
         const table = tables[tableIndex]
+        let offset = initializer(globals)
         for (const value of segment) table[offset++] = value
       }
     }
