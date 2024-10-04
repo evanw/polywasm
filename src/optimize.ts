@@ -625,7 +625,7 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
                 childPtrVar,
                 childOpVar,
                 nested[operand as Expr]!,
-                Enable.Stats ? subMatch => buildStatName!(substituteMatch(match, operand as Expr, subMatch)) : null,
+                Enable.Stats !== 0 ? subMatch => buildStatName!(substituteMatch(match, operand as Expr, subMatch)) : null,
                 reusableNodes,
                 placeholderVars,
               )
@@ -637,7 +637,7 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
             // Make sure to preserve the output stack slot of the root node in
             // case this expression isn't inlined and we need to emit an
             // assignment to that stack slot.
-            if (Enable.Stats) code += `${recordStatsVar}(${JSON.stringify(buildStatName!(match))});`
+            if (Enable.Stats !== 0) code += `${recordStatsVar}(${JSON.stringify(buildStatName!(match))});`
             const replacePtr = constructReplacement(replace, placeholderVars, reusableNodes.slice(), `|${astVar}[${rootPtrVar}]&${~0 << Pack.OutSlotShift}`)
 
             // If we know how to optimize the resulting node, then continue to
@@ -795,9 +795,9 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
     }
   }
   let code = `for(;;){var ${rootOpVar}=${astVar}[${rootPtrVar}]&${Pack.OpMask};`
-  compileRules(rootPtrVar, rootOpVar, rules, Enable.Stats ? matchToStatName : null, [], {})
+  compileRules(rootPtrVar, rootOpVar, rules, Enable.Stats !== 0 ? matchToStatName : null, [], {})
   code += `return ${rootPtrVar}}`
-  return Enable.Stats
+  return Enable.Stats !== 0
     ? new Function(recordStatsVar, `return(${astVar},${constantsVar},${allocateNode},${rootPtrVar})=>{${code}}`)(recordStats)
     : new Function(astVar, constantsVar, allocateNode, rootPtrVar, code)
 }
