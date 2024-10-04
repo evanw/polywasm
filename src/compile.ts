@@ -4,7 +4,7 @@
 import { Context, ContextField, LazyFunc } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
-import { formatHexByte, FuncType, Type, WASM } from './parse'
+import { formatHexByte, FuncType, TableItem, Type, WASM } from './parse'
 
 export enum Op {
   unreachable = 0x00,
@@ -230,6 +230,13 @@ export enum Op {
   data_drop = 0xFC_09,
   memory_copy = 0xFC_0A,
   memory_fill = 0xFC_0B,
+
+  table_init = 0xFC_0C,
+  elem_drop = 0xFC_0D,
+  table_copy = 0xFC_0E,
+  table_grow = 0xFC_0F,
+  table_size = 0xFC_10,
+  table_fill = 0xFC_11,
 }
 
 const enum BlockKind {
@@ -279,7 +286,7 @@ const enum MetaFlag {
   Push = 1 << 2, // Pushes one value to the stack (e.g. "local_get")
   Simple = 1 << 3, // Doesn't need special handling during the initial scan (e.g. not "call")
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
-  HasHint = 1 << 5, // Has an align byte (e.g. "i32_store8")
+  HasHint = 1 << 5, // Has an align byte (e.g. "i32_store8") or a type byte (e.g. "ref_null")
   BoolToInt = 1 << 6, // Results in a boolean that must be casted back to an i32
   ToU32 = 1 << 7, // Arguments should be converted to 32-bit unsigned
   ToS64 = 1 << 8, // Arguments should be converted to 64-bit signed
@@ -482,6 +489,12 @@ metaTable[Op.i64_trunc_sat_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_trunc_sat_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_trunc_sat_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
 
+metaTable[Op.data_drop] = MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.elem_drop] = MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.table_grow] = 2 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.table_size] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.table_fill] = 3 | MetaFlag.HasIndex | MetaFlag.Simple
+
 // WebAssembly bytecode is decoded into an AST so that it can be optimized
 // before converting it to JavaScript. The AST is stored as numbers in an
 // array instead of as JavaScript objects for performance, which can matter
@@ -519,7 +532,9 @@ export const compileCode = (
   funcTypes: FuncType[],
   createLazyFunc: (index: number) => LazyFunc,
   tables: (LazyFunc | null)[][],
+  tableSection: readonly TableItem[],
   dataSegments: Uint8Array[],
+  elementSegments: (readonly (LazyFunc | null)[])[],
   globals: (number | bigint)[],
   library: Library,
   context: Context,
@@ -807,9 +822,22 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
       case Op.memory_init: return `c.${ContextField.Uint8Array}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
-      case Op.data_drop: return `d[${ast[ptr + 1]}]=new Uint8Array`
+      case Op.data_drop: {
+        if (ast[ptr + 1] >= dataSegments.length) throw new Error('Invalid data index: ' + ast[ptr + 1])
+        return `d[${ast[ptr + 1]}]=new Uint8Array`
+      }
       case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
+
+      case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
+      case Op.elem_drop: {
+        if (ast[ptr + 1] >= elementSegments.length) throw new Error('Invalid element index: ' + ast[ptr + 1])
+        return `e[${ast[ptr + 1]}]=[]`
+      }
+      case Op.table_copy: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},${tableName(ast[ptr + 5])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
+      case Op.table_grow: return `l.${/* @__KEY__ */ 'table_grow_'}(${tableName(ast[ptr + 3])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${Math.min(0xFFFF_FFFF, tableSection[ast[ptr + 3]][2])})`
+      case Op.table_size: return tableName(ast[ptr + 1]) + '.length'
+      case Op.table_fill: return `l.${/* @__KEY__ */ 'table_fill_'}(${tableName(ast[ptr + 4])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
 
       default: throw 'Internal error'
     }
@@ -1401,15 +1429,6 @@ export const compileCode = (
             break
           }
 
-          case Op.data_drop: {
-            const index = readU32LEB()
-            if (index >= dataSegments.length) throw new Error('Invalid passive data index: ' + index)
-            astPtrs.push(astNextPtr)
-            ast[astNextPtr++] = op
-            ast[astNextPtr++] = index
-            break
-          }
-
           case Op.memory_copy:
             if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw new Error('Unsupported non-zero memory index') // Source and destination
             if (!blocks[blocks.length - 1].isDead_) {
@@ -1435,6 +1454,39 @@ export const compileCode = (
             }
             break
 
+          case Op.table_init: {
+            const element = readU32LEB()
+            const table = readU32LEB()
+            if (element >= elementSegments.length) throw new Error('Invalid element index: ' + element)
+            if (!blocks[blocks.length - 1].isDead_) {
+              stackTop -= 2
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -stackTop
+              ast[astNextPtr++] = -(stackTop + 1)
+              ast[astNextPtr++] = -(stackTop + 2)
+              ast[astNextPtr++] = table
+              ast[astNextPtr++] = element
+            }
+            break
+          }
+
+          case Op.table_copy: {
+            const destination = readU32LEB()
+            const source = readU32LEB()
+            if (!blocks[blocks.length - 1].isDead_) {
+              stackTop -= 2
+              astPtrs.push(astNextPtr)
+              ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -stackTop
+              ast[astNextPtr++] = -(stackTop + 1)
+              ast[astNextPtr++] = -(stackTop + 2)
+              ast[astNextPtr++] = destination
+              ast[astNextPtr++] = source
+            }
+            break
+          }
+
           default:
             throw new Error('Unsupported instruction: 0xFC ' + formatHexByte(op & 0xFF))
         }
@@ -1451,7 +1503,16 @@ export const compileCode = (
   // Wrap the body with the arguments
   const name = JSON.stringify('wasm:' + (nameSection.get(funcIndex) || `function[${codeIndex}]`))
   const js = `return{${name}(${names.slice(0, argCount)}){var ${decls};${body}}}[${name}]`
-  return new Function('f', 'F', 'c', 't', 'd', 'g', 'l', js)(funcs, createLazyFunc, context, tables, dataSegments, globals, library)
+  return new Function('f', 'F', 'c', 't', 'd', 'e', 'g', 'l', js)(
+    funcs,
+    createLazyFunc,
+    context,
+    tables,
+    dataSegments,
+    elementSegments,
+    globals,
+    library,
+  )
 }
 
 // This can pretty-print the expression subtree at "ptr" (for use with debugging)

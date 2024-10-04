@@ -53,7 +53,7 @@ const enum Mutable {
 
 const enum ElementFlag {
   Passive = 1 << 0,
-  Declarative = 1 << 1,
+  TableIndex = 1 << 1,
   Expression = 1 << 2,
 }
 
@@ -324,11 +324,11 @@ const parse = (bytes: Uint8Array): WASM => {
     else if (sectionType === Section.Element) {
       for (let i = 0, elementCount = readU32LEB(); i < elementCount; i++) {
         const flags: ElementFlag = readU32LEB()
-        if (flags > ElementFlag.Expression) {
+        if (flags > (ElementFlag.Passive | ElementFlag.TableIndex | ElementFlag.Expression)) {
           throw new CompileError('Unsupported element kind: ' + flags)
         }
-        const mode = flags & (ElementFlag.Passive | ElementFlag.Declarative)
-        const tableIndex = mode === ElementFlag.Declarative ? readU32LEB() : mode === 0 ? 0 : null
+        const mode = flags & (ElementFlag.Passive | ElementFlag.TableIndex)
+        const tableIndex = mode === ElementFlag.TableIndex ? readU32LEB() : mode === 0 ? 0 : null
         const offset = flags & ElementFlag.Passive ? null : readConstantU32()
         if (mode && bytes[ptr++] !== (flags & ElementFlag.Expression ? Type.FuncRef : 0)) {
           throw new CompileError('Unsupported element type: ' + formatHexByte(bytes[ptr - 1]))

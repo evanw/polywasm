@@ -115,6 +115,30 @@ export const createLibrary = () => {
     i64_extend32_s_(x: bigint): bigint {
       return x & 0x8000_0000n ? x | 0xFFFF_FFFF_0000_0000n : x & 0xFFFF_FFFFn
     },
+    table_init_or_copy_(x: (LazyFunc | null)[], y: (LazyFunc | null)[], d: number, s: number, n: number): void {
+      d >>>= 0
+      s >>>= 0
+      n >>>= 0
+      if (s + n > y.length || d + n > x.length) throw RangeError()
+      if (d <= s) {
+        for (let j = 0; j < n; j++) x[d + j] = y[s + j]
+      } else {
+        for (let j = n - 1; j >= 0; j--) x[d + j] = y[s + j]
+      }
+    },
+    table_grow_(x: (LazyFunc | null)[], val: LazyFunc | null, n: number, limit: number): number {
+      const sz = x.length
+      n >>>= 0
+      if (sz + n > limit) return -1
+      for (let i = 0; i < n; i++) x.push(val)
+      return sz
+    },
+    table_fill_(x: (LazyFunc | null)[], i: number, val: LazyFunc | null, n: number): void {
+      i >>>= 0
+      n >>>= 0
+      if (i + n > x.length) throw RangeError()
+      for (let j = 0; j < n; j++) x[i + j] = val
+    },
     importLazyFunc_(fn: Function | null): LazyFunc | null {
       if (fn === null) return fn
       const obj = exportedFuncs.get(fn)

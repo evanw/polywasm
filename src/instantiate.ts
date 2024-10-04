@@ -206,7 +206,9 @@ export class Instance {
           funcTypes,
           createLazyFunc,
           tables,
+          tableSection,
           dataSegments,
+          elementSegments,
           globals,
           library,
           context,
@@ -218,19 +220,20 @@ export class Instance {
     }
 
     // Handle tables
+    const elementSegments: (readonly (LazyFunc | null)[])[] = []
     for (const [type, min, max] of tableSection) {
       const table: (LazyFunc | null)[] = []
       for (let i = 0; i < min; i++) table.push(null)
       tables.push(table)
     }
     for (let [tableIndex, offset, indices] of elementSection) {
-      if (tableIndex === null) continue
-      if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
-      if (offset !== null) {
+      const segment: (LazyFunc | null)[] = []
+      for (const index of indices) segment.push(index === null ? null : createLazyFunc(index))
+      elementSegments.push(segment)
+      if (tableIndex !== null && offset !== null) {
+        if (tableIndex >= tables.length) throw new Error('Invalid table index: ' + tableIndex)
         const table = tables[tableIndex]
-        for (const index of indices) {
-          table[offset++] = index === null ? null : createLazyFunc(index)
-        }
+        for (const value of segment) table[offset++] = value
       }
     }
 
