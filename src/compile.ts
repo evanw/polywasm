@@ -290,7 +290,7 @@ const enum MetaFlag {
 // This lookup table helps decode WebAssembly bytecode compactly. Most bytecodes
 // have a regular stack-based structure. This is translated into a register-based
 // structure internally, where a "register" is a JavaScript local variable.
-const metaTable = new Uint16Array(256)
+const metaTable: Record<number, number> = {}
 
 metaTable[Op.nop] = MetaFlag.Omit | MetaFlag.Simple
 metaTable[Op.drop] = 1 | MetaFlag.Omit | MetaFlag.Simple
@@ -472,6 +472,15 @@ metaTable[Op.i64_extend32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.ref_null] = MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.Simple
 metaTable[Op.ref_is_null] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 metaTable[Op.ref_func] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
+
+metaTable[Op.i32_trunc_sat_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_trunc_sat_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_trunc_sat_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i32_trunc_sat_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_trunc_sat_f32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_trunc_sat_f32_u] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_trunc_sat_f64_s] = 1 | MetaFlag.Push | MetaFlag.Simple
+metaTable[Op.i64_trunc_sat_f64_u] = 1 | MetaFlag.Push | MetaFlag.Simple
 
 // WebAssembly bytecode is decoded into an AST so that it can be optimized
 // before converting it to JavaScript. The AST is stored as numbers in an
@@ -1373,13 +1382,12 @@ export const compileCode = (
         // This is a prefix for a subset of instructions
         op = 0xFC00 | bytes[bytesPtr++]
 
-        if (op <= Op.i64_trunc_sat_f64_u) {
-          if (!blocks[blocks.length - 1].isDead_) {
-            pushUnary(op)
-          }
-          break
+        // Most opcodes can be decoded automatically using a table lookup
+        if (handleSimpleOp(op)) {
+          continue
         }
 
+        // A few opcodes need special handling and can't be decoded with a table
         switch (op) {
           case Op.memory_init: {
             const index = readU32LEB()
