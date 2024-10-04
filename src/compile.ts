@@ -279,7 +279,7 @@ const enum MetaFlag {
   Push = 1 << 2, // Pushes one value to the stack (e.g. "local_get")
   Simple = 1 << 3, // Doesn't need special handling during the initial scan (e.g. not "call")
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
-  HasAlign = 1 << 5, // Has an align byte (e.g. "i32_store8")
+  HasHint = 1 << 5, // Has an align byte (e.g. "i32_store8")
   BoolToInt = 1 << 6, // Results in a boolean that must be casted back to an i32
   ToU32 = 1 << 7, // Arguments should be converted to 32-bit unsigned
   ToS64 = 1 << 8, // Arguments should be converted to 64-bit signed
@@ -304,29 +304,29 @@ metaTable[Op.global_set] = 1 | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.table_get] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.table_set] = 2 | MetaFlag.HasIndex | MetaFlag.Simple
 
-metaTable[Op.i32_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f32_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f64_load] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load32_s] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_load32_u] = 1 | MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f32_store] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.f64_store] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store8] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i32_store16] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store8] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store16] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
-metaTable[Op.i64_store32] = 2 | MetaFlag.HasAlign | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.f32_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.f64_load] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load8_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load8_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load16_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load16_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load32_s] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_load32_u] = 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.f32_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.f64_store] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_store8] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i32_store16] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_store8] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_store16] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
+metaTable[Op.i64_store32] = 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple
 
 metaTable[Op.memory_size] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 metaTable[Op.memory_grow] = 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
@@ -469,7 +469,7 @@ metaTable[Op.i64_extend8_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_extend16_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 metaTable[Op.i64_extend32_s] = 1 | MetaFlag.Push | MetaFlag.Simple
 
-metaTable[Op.ref_null] = MetaFlag.Push | MetaFlag.HasAlign | MetaFlag.Simple
+metaTable[Op.ref_null] = MetaFlag.Push | MetaFlag.HasHint | MetaFlag.Simple
 metaTable[Op.ref_is_null] = 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt
 metaTable[Op.ref_func] = MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple
 
@@ -1157,7 +1157,7 @@ export const compileCode = (
           }
         }
         if (!(flags & MetaFlag.Omit)) {
-          if (flags & MetaFlag.HasAlign) bytesPtr++ // Alignment hints are ignored
+          if (flags & MetaFlag.HasHint) bytesPtr++ // Hint bytes are ignored
           astPtrs.push(astNextPtr)
           if (flags & MetaFlag.Push) op |= (stackTop + 1) << Pack.OutSlotShift
           ast[astNextPtr++] = op | (childCount << Pack.ChildCountShift)
@@ -1167,7 +1167,7 @@ export const compileCode = (
         if (flags & MetaFlag.Push) stackTop++
         if (flags & MetaFlag.BoolToInt) pushUnary(Op.BOOL_TO_INT)
       } else {
-        if (flags & MetaFlag.HasAlign) bytesPtr++
+        if (flags & MetaFlag.HasHint) bytesPtr++
         if (flags & MetaFlag.HasIndex) readU32LEB()
       }
     }
