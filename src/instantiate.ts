@@ -160,17 +160,6 @@ export class Instance {
     }
     resetContext(context, memory.buffer = new ArrayBuffer(context[ContextField.PageCount] << 16))
 
-    // Handle data
-    const dataSegments: Uint8Array[] = []
-    for (let [index, offset, data] of dataSection) {
-      if (index !== 0) throw new Error('Invalid memory index: ' + index)
-      if (offset !== null) {
-        context[ContextField.Uint8Array].set(data, offset)
-        data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
-      }
-      dataSegments.push(data)
-    }
-
     // Handle imports
     for (const tuple of importSection) {
       const [module, name, desc, payload] = tuple
@@ -188,6 +177,17 @@ export class Instance {
       } else {
         throw new Error(`Unsupported import type ${desc} for "${module}"."${name}"`)
       }
+    }
+
+    // Handle data
+    const dataSegments: Uint8Array[] = []
+    for (let [index, offset, data] of dataSection) {
+      if (index !== 0) throw new Error('Invalid memory index: ' + index)
+      if (offset !== null) {
+        context[ContextField.Uint8Array].set(data, offset)
+        data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
+      }
+      dataSegments.push(data)
     }
 
     // Handle globals
