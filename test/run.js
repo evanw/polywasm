@@ -12,6 +12,8 @@ import url from 'url'
 import path from 'path'
 
 const coreTestDir = path.join(url.fileURLToPath(import.meta.url), '..', 'core')
+const testHarness = fs.readFileSync(path.join(coreTestDir, 'harness', 'sync_index.js'), 'utf8')
+  .replace(/\$\{e\.stack\}(\\n)?/g, '')
 
 function runTests(wasm) {
   const counters = {
@@ -26,91 +28,44 @@ function runTests(wasm) {
     const js = fs.readFileSync(file, 'utf8')
 
     const fn = new Function('counters', 'WebAssembly', `
-      const registry = {
-        spectest: {
-          print_i32() {},
-          print_f32() {},
-          print_f64() {},
-          print_i32_f32() {},
-          print_f64_f64() {},
-          global_i32: 666,
-          global_i64: 666n,
-          global_f32: 666,
-          global_f64: 666,
-          table: new WebAssembly.Table({ initial: 10, maximum: 20, element: 'anyfunc' }),
-          memory: new WebAssembly.Memory({ initial: 1, maximum: 2 })
-        }
-      }
+      ${testHarness}
 
-      function register(name, instance) {
-        if (instance.value) registry[name] = instance.value.exports
-      }
+      registry.spectest.print = () => {}
+      registry.spectest.print_i32 = () => {}
+      registry.spectest.print_i64 = () => {}
+      registry.spectest.print_i32_f32 = () => {}
+      registry.spectest.print_f64_f64 = () => {}
+      registry.spectest.print_f32 = () => {}
+      registry.spectest.print_f64 = () => {}
 
-      function get(instance, name) {
-        if (instance.value) {
-          const v = instance.value.exports[name]
-          return { value: v instanceof WebAssembly.Global ? v.value : v }
-        }
-        return { error: instance.error }
-      }
-
-      function instance(bytes, imports = registry) {
-        bytes = new Uint8Array(bytes.split('').map(x => x.charCodeAt(0)))
+      function test(fn, name) {
         try {
-          const module = new WebAssembly.Module(bytes)
-          const instance = new WebAssembly.Instance(module, imports)
-          return { value: instance }
+          fn()
+          counters.passed++
         } catch (error) {
-          return { error }
-        }
-      }
-
-      function exports(instance) {
-        if (instance.value) return { value: { module: instance.value.exports } }
-        return { error: instance.error }
-      }
-
-      function call(instance, name, args) {
-        try {
-          if (instance.value) return { value: instance.value.exports[name](...args) }
-          return { error: instance.error }
-        } catch (error) {
-          return { error }
-        }
-      }
-
-      function run(fn) {
-        fn()
-      }
-
-      function assert_return(fn, ...expected) {
-        const result = fn()
-        if (result.error) {
-          console.log('❌ assert_return: ' + fn + ': ' + result.error)
           counters.failed++
-        } else {
-          const observed = result.value ?? []
-          if (observed + '' !== expected + '') {
-            console.log('❌ assert_return: ' + fn + ': expected=' + expected + ' observed=' + observed)
-            counters.failed++
-          } else {
-            // console.log('✅ assert_return: ' + fn)
-            counters.passed++
-          }
+          console.log('  ❌ ' + name + ': ' + error)
+        }
+      }
+
+      function assert_true(actual, description) {
+        if (actual !== true) {
+          throw new Error(description)
+        }
+      }
+
+      function assert_equals(actual, expected, description) {
+        if (actual !== expected) {
+          throw new Error(description || 'expected ' + expected + ', got: ' + actual)
         }
       }
 
       // These are ignored...
-      const assert_exhaustion = () => {}
-      const assert_invalid = () => {}
-      const assert_malformed = () => {}
-      const assert_trap = () => {}
-      const assert_uninstantiable = () => {}
-      const assert_unlinkable = () => {}
-
-      // OCaml seemingly can't print out floats accurately, so I've serialized them as integers to preserve the exact bits
-      const float32 = i32 => new Float32Array(new Int32Array([i32]).buffer)[0]
-      const float64 = i64 => new Float64Array(new BigInt64Array([i64]).buffer)[0]
+      function assert_exhaustion() {}
+      function assert_invalid() {}
+      function assert_trap() {}
+      function assert_uninstantiable() {}
+      function assert_unlinkable() {}
 
       ${js}
     `)
