@@ -172,7 +172,8 @@ const parse = (bytes: Uint8Array): WASM => {
   }
 
   const readName = (length = readU32LEB()): string => {
-    return new TextDecoder().decode(bytes.slice(ptr, ptr += length))
+    // Note: Can't use "TextDecoder" here because it doesn't handle U+FEFF correctly
+    return decodeURIComponent(escape(String.fromCharCode(...bytes.slice(ptr, ptr += length))))
   }
 
   const readLimits = (kind: LimitsKind = bytes[ptr++]): [min: number, max: number] => {
