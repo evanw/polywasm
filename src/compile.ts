@@ -725,8 +725,14 @@ export const compileCode = (
 
       case Op.i32_const: return ast[ptr + 1] + ''
       case Op.i64_const: return (constants[ast[ptr + 1]] & 0xFFFF_FFFF_FFFF_FFFFn) + 'n'
-      case Op.f32_const: return dataView.getFloat32(ast[ptr + 1], true) + ''
-      case Op.f64_const: return dataView.getFloat64(ast[ptr + 1], true) + ''
+      case Op.f32_const: {
+        const value = dataView.getFloat32(ast[ptr + 1], true)
+        return Object.is(value, -0) ? '-0' : value + ''
+      }
+      case Op.f64_const: {
+        const value = dataView.getFloat64(ast[ptr + 1], true)
+        return Object.is(value, -0) ? '-0' : value + ''
+      }
 
       case Op.BOOL: return emit(ast[ptr + 1])
       case Op.BOOL_NOT: return `!${emit(ast[ptr + 1])}`
