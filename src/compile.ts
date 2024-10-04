@@ -676,7 +676,9 @@ export const compileCode = (
         return `[${returns}]=${code}`
       }
 
-      case Op.select: return `${emit(ast[ptr + 1])}?${emit(ast[ptr + 2])}:${emit(ast[ptr + 3])}`
+      case Op.select:
+      case Op.select_type:
+        return `${emit(ast[ptr + 1])}?${emit(ast[ptr + 2])}:${emit(ast[ptr + 3])}`
 
       case Op.local_get: return names[ast[ptr + 1]]
       case Op.local_set: case Op.local_tee: return `${names[ast[ptr + 2]]}=${emit(ast[ptr + 1])}`
@@ -1348,7 +1350,13 @@ export const compileCode = (
         break
       }
 
-      case Op.select: {
+      case Op.select:
+      case Op.select_type: {
+        if (op === Op.select_type) {
+          const count = readU32LEB()
+          if (count !== 1) throw new Error('Unsupported select type count ' + count)
+          bytesPtr++ // Ignore the type
+        }
         // Note: JS evaluation order is different than WASM evaluation order here
         if (!blocks[blocks.length - 1].isDead_) {
           pushUnary(Op.BOOL)
