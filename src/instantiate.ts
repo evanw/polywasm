@@ -29,41 +29,31 @@ export interface LazyFunc {
   compiled_: Function // This is overwritten once when the function is first compiled
 }
 
-export const enum ContextField {
-  PageCount = 'pc',
-  PageGrow = 'pg',
-
-  // These are reset when the memory grows
-  Int8Array = 'i8',
-  Uint8Array = 'u8',
-  DataView = 'dv',
-}
-
 export class Context {
   declare memory_: Memory
   declare pageLimit_: number
-  declare [ContextField.PageCount]: number
-  declare [ContextField.PageGrow]: (pagesDelta: number) => number
+  declare pageCount_: number
+  declare pageGrow_: (pagesDelta: number) => number
 
   // These are reset when the memory grows
-  declare [ContextField.Int8Array]: Int8Array
-  declare [ContextField.Uint8Array]: Uint8Array
-  declare [ContextField.DataView]: DataView
+  declare uint8Array_: Uint8Array
+  declare int8Array_: Int8Array
+  declare dataView_: DataView
 }
 
 const resetContext = (context: Context, buffer: ArrayBuffer, bytes = new Uint8Array(buffer)): void => {
-  context[ContextField.Int8Array] = new Int8Array(buffer)
-  context[ContextField.Uint8Array] = bytes
-  context[ContextField.DataView] = new DataView(buffer)
+  context.uint8Array_ = bytes
+  context.int8Array_ = new Int8Array(buffer)
+  context.dataView_ = new DataView(buffer)
 }
 
 const growContext = (context: Context, pagesDelta: number): number => {
-  const pageCount = context[ContextField.PageCount]
+  const pageCount = context.pageCount_
   pagesDelta >>>= 0
   if (pageCount + pagesDelta > context.pageLimit_) return -1
   if (pagesDelta) {
-    const buffer = context.memory_.buffer = new ArrayBuffer((context[ContextField.PageCount] += pagesDelta) << 16)
-    const oldBytes = context[ContextField.Uint8Array]
+    const buffer = context.memory_.buffer = new ArrayBuffer((context.pageCount_ += pagesDelta) << 16)
+    const oldBytes = context.uint8Array_
     const bytes = new Uint8Array(buffer)
     bytes.set(oldBytes)
     resetContext(context, buffer, bytes)
@@ -147,18 +137,18 @@ export class Instance {
     if (memorySection.length > 0) {
       const [memoryMin, memoryMax] = memorySection[0]
       context.pageLimit_ = Math.min(memoryMax, 0xFFFF) // 32-bit WASM has at most 65535 pages
-      context[ContextField.PageCount] = memoryMin
+      context.pageCount_ = memoryMin
     } else {
       context.pageLimit_ = 0
-      context[ContextField.PageCount] = 0
+      context.pageCount_ = 0
     }
-    const grow = context[ContextField.PageGrow] = pagesDelta => growContext(context, pagesDelta)
+    const grow = context.pageGrow_ = pagesDelta => growContext(context, pagesDelta)
     memory.grow = pagesDelta => {
       const pageCount = grow(pagesDelta)
       if (pageCount < 0) throw RangeError('Cannot grow past limit')
       return pageCount
     }
-    resetContext(context, memory.buffer = new ArrayBuffer(context[ContextField.PageCount] << 16))
+    resetContext(context, memory.buffer = new ArrayBuffer(context.pageCount_ << 16))
 
     // Handle imports
     for (const tuple of importSection) {
@@ -190,7 +180,7 @@ export class Instance {
     for (let [index, initializer, data] of dataSection) {
       if (index !== 0) throw Error('Invalid memory index: ' + index)
       if (initializer !== null) {
-        context[ContextField.Uint8Array].set(data, initializer(globals))
+        context.uint8Array_.set(data, initializer(globals))
         data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
       }
       dataSegments.push(data)

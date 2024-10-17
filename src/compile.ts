@@ -1,7 +1,7 @@
 // This file provides a way to parse a single WebAssembly function and convert
 // it to JavaScript. Functions are compiled lazily when they are first evaluated.
 
-import { Context, ContextField, LazyFunc } from './instantiate'
+import { Context, LazyFunc } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
 import { formatHexByte, FuncType, GlobalValue, TableItem, Type, WASM } from './parse'
@@ -624,19 +624,19 @@ export const compileCode = (
   }
 
   // Optimize the single-byte case using typed arrays
-  const load8 = (field: ContextField.Int8Array | ContextField.Uint8Array, addr: number, offset: number): string => {
+  const load8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number): string => {
     return `c.${field}[${emit(addr)}${offset ? '+' + offset : ''}]`
   }
-  const store8 = (field: ContextField.Int8Array | ContextField.Uint8Array, addr: number, offset: number, value: string): string => {
+  const store8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number, value: string): string => {
     return `c.${field}[${emit(addr)}${offset ? '+' + offset : ''}]=${value}`
   }
 
   // The multi-byte case must use the data view for alignment reasons
   const load = <T extends string>(get: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number): string => {
-    return `c.${ContextField.DataView}.get${get}(${emit(addr)}${offset ? '+' + offset : ''},1)`
+    return `c.${/* @__KEY__ */ 'dataView_'}.get${get}(${emit(addr)}${offset ? '+' + offset : ''},1)`
   }
   const store = <T extends string>(set: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number, value: string): string => {
-    return `c.${ContextField.DataView}.set${set}(${emit(addr)}${offset ? '+' + offset : ''},${value},1)`
+    return `c.${/* @__KEY__ */ 'dataView_'}.set${set}(${emit(addr)}${offset ? '+' + offset : ''},${value},1)`
   }
 
   const emit = (ptr: number): string => {
@@ -694,12 +694,12 @@ export const compileCode = (
       case Op.S64_LOAD: return load('BigInt64', ast[ptr + 1], ast[ptr + 2])
       case Op.f32_load: return load('Float32', ast[ptr + 1], ast[ptr + 2])
       case Op.f64_load: return load('Float64', ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load8_s: return load8(ContextField.Int8Array, ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load8_u: return load8(ContextField.Uint8Array, ast[ptr + 1], ast[ptr + 2])
+      case Op.i32_load8_s: return load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2])
+      case Op.i32_load8_u: return load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2])
       case Op.i32_load16_s: return load('Int16', ast[ptr + 1], ast[ptr + 2])
       case Op.i32_load16_u: return load('Uint16', ast[ptr + 1], ast[ptr + 2])
-      case Op.i64_load8_s: return `BigInt(${load8(ContextField.Int8Array, ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_load8_u: return `BigInt(${load8(ContextField.Uint8Array, ast[ptr + 1], ast[ptr + 2])})`
+      case Op.i64_load8_s: return `BigInt(${load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_load8_u: return `BigInt(${load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2])})`
       case Op.i64_load16_s: return `BigInt(${load('Int16', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
       case Op.i64_load16_u: return `BigInt(${load('Uint16', ast[ptr + 1], ast[ptr + 2])})`
       case Op.i64_load32_s: return `BigInt(${load('Int32', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
@@ -708,19 +708,19 @@ export const compileCode = (
       case Op.i64_store: return store('BigUint64', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
       case Op.f32_store: return store('Float32', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
       case Op.f64_store: return store('Float64', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i32_store8: return store8(ContextField.Uint8Array, ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
+      case Op.i32_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
       case Op.i32_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i64_store8: return store8(ContextField.Uint8Array, ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&255n)`)
+      case Op.i64_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&255n)`)
       case Op.i64_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&65535n)`)
       case Op.i64_store32: return store('Int32', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&0xFFFFFFFFn)`)
 
       case Op.memory_size: {
         if (ast[ptr + 1]) throw Error('Unsupported non-zero memory index')
-        return `c.${ContextField.PageCount}`
+        return `c.${/* @__KEY__ */ 'pageCount_'}`
       }
       case Op.memory_grow: {
         if (ast[ptr + 2]) throw Error('Unsupported non-zero memory index')
-        return `c.${ContextField.PageGrow}(${emit(ast[ptr + 1])})`
+        return `c.${/* @__KEY__ */ 'pageGrow_'}(${emit(ast[ptr + 1])})`
       }
 
       case Op.i32_const: return ast[ptr + 1] + ''
@@ -829,13 +829,13 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
-      case Op.memory_init: return `c.${ContextField.Uint8Array}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
+      case Op.memory_init: return `c.${/* @__KEY__ */ 'uint8Array_'}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
       case Op.data_drop: {
         if (ast[ptr + 1] >= dataSegments.length) throw Error('Invalid data index: ' + ast[ptr + 1])
         return `d[${ast[ptr + 1]}]=new Uint8Array`
       }
-      case Op.memory_copy: return `c.${ContextField.Uint8Array}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
-      case Op.memory_fill: return `c.${ContextField.Uint8Array}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
+      case Op.memory_copy: return `c.${/* @__KEY__ */ 'uint8Array_'}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
+      case Op.memory_fill: return `c.${/* @__KEY__ */ 'uint8Array_'}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.elem_drop: {
