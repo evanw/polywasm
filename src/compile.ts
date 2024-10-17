@@ -716,11 +716,11 @@ export const compileCode = (
 
       case Op.memory_size: {
         if (ast[ptr + 1]) throw Error('Unsupported non-zero memory index')
-        return `c.${/* @__KEY__ */ 'pageCount_'}`
+        return `c.${/* @__KEY__ */ 'memory_'}.${/* @__KEY__ */ 'pageCount_'}`
       }
       case Op.memory_grow: {
         if (ast[ptr + 2]) throw Error('Unsupported non-zero memory index')
-        return `c.${/* @__KEY__ */ 'pageGrow_'}(${emit(ast[ptr + 1])})`
+        return `c.${/* @__KEY__ */ 'memory_'}.${/* @__KEY__ */ 'grow_'}(${emit(ast[ptr + 1])})`
       }
 
       case Op.i32_const: return ast[ptr + 1] + ''

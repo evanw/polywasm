@@ -10,11 +10,6 @@ export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
   }
 }
 
-export class Memory {
-  declare buffer: ArrayBuffer
-  declare grow: (delta: number) => number
-}
-
 export class Table {
   declare length: number
   declare get: (index: number) => any
@@ -30,41 +25,12 @@ export interface LazyFunc {
 }
 
 export class Context {
-  declare memory_: Memory
-  declare pageLimit_: number
-  declare pageCount_: number
-  declare pageGrow_: (pagesDelta: number) => number
+  declare memory_: InternalMemory
 
   // These are reset when the memory grows
   declare uint8Array_: Uint8Array
   declare int8Array_: Int8Array
   declare dataView_: DataView
-}
-
-const resetContext = (context: Context, buffer: ArrayBuffer, bytes = new Uint8Array(buffer)): void => {
-  context.uint8Array_ = bytes
-  context.int8Array_ = new Int8Array(buffer)
-  context.dataView_ = new DataView(buffer)
-}
-
-const growContext = (context: Context, pagesDelta: number): number => {
-  const pageCount = context.pageCount_
-  pagesDelta >>>= 0
-  if (pageCount + pagesDelta > context.pageLimit_) return -1
-  if (pagesDelta) {
-    const buffer = context.memory_.buffer = new ArrayBuffer((context.pageCount_ += pagesDelta) << 16)
-    const oldBytes = context.uint8Array_
-    const bytes = new Uint8Array(buffer)
-    bytes.set(oldBytes)
-    resetContext(context, buffer, bytes)
-
-    // Try to detach the old buffer to mimic the real behavior of "grow"
-    try {
-      structuredClone(oldBytes.buffer, { transfer: [oldBytes.buffer] })
-    } catch {
-    }
-  }
-  return pageCount
 }
 
 const compileImportFunc = (funcType: FuncType, value: WebAssembly.ImportValue, library: Library): (...args: any[]) => any => {
@@ -105,6 +71,7 @@ export class Instance {
       typeSection_: typeSection,
     } = wasm
     const exports: WebAssembly.Exports = this.exports = Object.create(null)
+    const memories: InternalMemory[] = []
     const funcs: Function[] = []
     const funcTypes: FuncType[] = []
     const globals: GlobalValue[] = []
@@ -130,26 +97,6 @@ export class Instance {
       return obj
     }
 
-    // Handle memory
-    const context = new Context
-    const memory = context.memory_ = new Memory
-    if (memorySection.length > 1) throw Error(`Unsupported memory count: ${memorySection.length}`)
-    if (memorySection.length > 0) {
-      const [memoryMin, memoryMax] = memorySection[0]
-      context.pageLimit_ = Math.min(memoryMax, 0xFFFF) // 32-bit WASM has at most 65535 pages
-      context.pageCount_ = memoryMin
-    } else {
-      context.pageLimit_ = 0
-      context.pageCount_ = 0
-    }
-    const grow = context.pageGrow_ = pagesDelta => growContext(context, pagesDelta)
-    memory.grow = pagesDelta => {
-      const pageCount = grow(pagesDelta)
-      if (pageCount < 0) throw RangeError('Cannot grow past limit')
-      return pageCount
-    }
-    resetContext(context, memory.buffer = new ArrayBuffer(context.pageCount_ << 16))
-
     // Handle imports
     for (const tuple of importSection) {
       const [module, name, desc, payload] = tuple
@@ -164,9 +111,30 @@ export class Instance {
       } else if (desc === Desc.Global) {
         globals.push(liveCastToWASM(value, payload))
         globalTypes.push(payload)
+      } else if (desc === Desc.Mem) {
+        memories.push(memoryRegistry.get(value as Memory)!)
       } else {
         throw Error(`Unsupported import type ${desc} for "${module}"."${name}"`)
       }
+    }
+
+    // Handle memory
+    const context = new Context
+    for (const [initial, maximum] of memorySection) {
+      memories.push(memoryRegistry.get(new Memory({ initial, maximum: initial > maximum ? initial : maximum }))!)
+    }
+    if (memories.length > 1) throw Error('Unsupported memory count: ' + memories.length)
+    if (memories.length > 0) {
+      const memory = memories[0]
+      const patch = () => {
+        // Copy these properties over to the context to reduce property lookup overhead
+        context.uint8Array_ = memory.uint8Array_
+        context.int8Array_ = memory.int8Array_
+        context.dataView_ = memory.dataView_
+      }
+      context.memory_ = memory
+      memory.patches_.push(patch)
+      patch()
     }
 
     // Handle globals
@@ -254,7 +222,7 @@ export class Instance {
         }
         exports[name] = value
       } else if (desc === Desc.Mem) {
-        exports[name] = memory
+        exports[name] = memories[index].external_
       } else if (desc === Desc.Global) {
         const value = new Global
         const type = globalTypes[index]
@@ -270,5 +238,82 @@ export class Instance {
 
     // Handle the starting function
     if (startSection >= 0) funcs[startSection]()
+  }
+}
+
+interface InternalMemory {
+  external_: Memory
+  buffer_: ArrayBuffer
+  uint8Array_: Uint8Array
+  int8Array_: Int8Array
+  dataView_: DataView
+  pageCount_: number
+  pageLimit_: number
+  patches_: (() => void)[]
+  grow_: (delta: number) => number
+}
+
+const memoryRegistry = new WeakMap<Memory, InternalMemory>()
+const clampPageCount = (x: number) => Math.max(-1, Math.min(x, 0xFFFF)) | 0
+
+export class Memory {
+  declare buffer: ArrayBuffer
+  declare grow: (delta: number) => number
+
+  constructor({ initial, maximum }: WebAssembly.MemoryDescriptor) {
+    initial = clampPageCount(initial)
+    maximum = clampPageCount(maximum ?? Infinity)
+    if (initial < 0 || initial > maximum) throw RangeError('Invalid memory descriptor')
+
+    const initialBuffer = new ArrayBuffer(initial << 16)
+    const internal: InternalMemory = {
+      external_: this,
+      buffer_: initialBuffer,
+      uint8Array_: new Uint8Array(initialBuffer),
+      int8Array_: new Int8Array(initialBuffer),
+      dataView_: new DataView(initialBuffer),
+      pageCount_: initial,
+      pageLimit_: maximum,
+      patches_: [],
+
+      grow_(pageDelta: number): number {
+        const oldPageCount = this.pageCount_
+        const oldBytes = this.uint8Array_
+
+        // Validate the page delta
+        pageDelta = clampPageCount(pageDelta)
+        if (pageDelta < 0 || this.pageCount_ + pageDelta > this.pageLimit_) return -1
+        if (!pageDelta) return oldPageCount
+
+        // Grow by copying over the old buffer
+        const newBuffer = new ArrayBuffer((this.pageCount_ += pageDelta) << 16)
+        const newBytes = new Uint8Array(newBuffer)
+        newBytes.set(oldBytes)
+
+        // Try to detach the old buffer to mimic the real behavior of "grow"
+        try {
+          structuredClone(this.buffer_, { transfer: [this.buffer_] })
+        } catch {
+        }
+
+        // Finish the grow operation
+        this.buffer_ = newBuffer
+        this.uint8Array_ = newBytes
+        this.int8Array_ = new Int8Array(newBuffer)
+        this.dataView_ = new DataView(newBuffer)
+        for (const patch of this.patches_) patch()
+        return oldPageCount
+      },
+    }
+
+    memoryRegistry.set(this, internal)
+    Object.defineProperty(this, 'buffer', {
+      get: () => internal.buffer_,
+    })
+    this.grow = pageDelta => {
+      const pageCount = internal.grow_(pageDelta)
+      if (pageCount < 0) throw RangeError('Cannot grow past limit')
+      return pageCount
+    }
   }
 }
