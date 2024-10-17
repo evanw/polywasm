@@ -24,15 +24,6 @@ export interface LazyFunc {
   compiled_: Function // This is overwritten once when the function is first compiled
 }
 
-export class Context {
-  declare memory_: InternalMemory
-
-  // These are reset when the memory grows
-  declare uint8Array_: Uint8Array
-  declare int8Array_: Int8Array
-  declare dataView_: DataView
-}
-
 const compileImportFunc = (funcType: FuncType, value: WebAssembly.ImportValue, library: Library): (...args: any[]) => any => {
   const [argTypes, returnTypes] = funcType
   const argNames: string[] = []
@@ -119,20 +110,19 @@ export class Instance {
     }
 
     // Handle memory
-    const context = new Context
+    const context: Record<string, any> = {}
     for (const [initial, maximum] of memorySection) {
       memories.push(memoryRegistry.get(new Memory({ initial, maximum: initial > maximum ? initial : maximum }))!)
     }
-    if (memories.length > 1) throw Error('Unsupported memory count: ' + memories.length)
-    if (memories.length > 0) {
-      const memory = memories[0]
+    for (let i = 0; i < memories.length; i++) {
+      const memory = memories[i]
       const patch = () => {
         // Copy these properties over to the context to reduce property lookup overhead
-        context.uint8Array_ = memory.uint8Array_
-        context.int8Array_ = memory.int8Array_
-        context.dataView_ = memory.dataView_
+        context[/* @__KEY__ */ 'uint8Array_' + i] = memory.uint8Array_
+        context[/* @__KEY__ */ 'int8Array_' + i] = memory.int8Array_
+        context[/* @__KEY__ */ 'dataView_' + i] = memory.dataView_
       }
-      context.memory_ = memory
+      context[/* @__KEY__ */ 'memory_' + i] = memory
       memory.patches_.push(patch)
       patch()
     }
@@ -146,9 +136,8 @@ export class Instance {
     // Handle data
     const dataSegments: Uint8Array[] = []
     for (let [index, initializer, data] of dataSection) {
-      if (index !== 0) throw Error('Invalid memory index: ' + index)
       if (initializer !== null) {
-        context.uint8Array_.set(data, initializer(globals))
+        context[/* @__KEY__ */ 'uint8Array_' + index].set(data, initializer(globals))
         data = new Uint8Array // "memory.init" should only succeed on active segments if the source "offset" and "size" are both 0
       }
       dataSegments.push(data)

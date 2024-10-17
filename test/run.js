@@ -12,8 +12,13 @@ import url from 'url'
 import path from 'path'
 
 const coreTestDir = path.join(url.fileURLToPath(import.meta.url), '..', 'core')
+const multiMemoryTestDir = path.join(coreTestDir, 'multi-memory')
 const testHarness = fs.readFileSync(path.join(coreTestDir, 'harness', 'sync_index.js'), 'utf8')
   .replace(/\$\{e\.stack\}(\\n)?/g, '')
+
+const tests = []
+for (const name of fs.readdirSync(coreTestDir)) tests.push(path.join(coreTestDir, name))
+for (const name of fs.readdirSync(multiMemoryTestDir)) tests.push(path.join(multiMemoryTestDir, name))
 
 function runTests(wasm) {
   const counters = {
@@ -21,10 +26,9 @@ function runTests(wasm) {
     failed: 0,
   }
 
-  for (const name of fs.readdirSync(coreTestDir)) {
-    if (!name.endsWith('.js')) continue
-    console.log(`🔹 ${name}`)
-    const file = path.join(coreTestDir, name)
+  for (const file of tests) {
+    if (!file.endsWith('.js')) continue
+    console.log(`🔹 ${path.relative(coreTestDir, file)}`)
     const js = fs.readFileSync(file, 'utf8')
 
     const fn = new Function('counters', 'WebAssembly', `

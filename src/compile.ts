@@ -1,7 +1,7 @@
 // This file provides a way to parse a single WebAssembly function and convert
 // it to JavaScript. Functions are compiled lazily when they are first evaluated.
 
-import { Context, LazyFunc } from './instantiate'
+import { LazyFunc } from './instantiate'
 import { Library } from './library'
 import { compileOptimizations } from './optimize'
 import { formatHexByte, FuncType, GlobalValue, TableItem, Type, WASM } from './parse'
@@ -286,7 +286,7 @@ const enum MetaFlag {
   Push = 1 << 2, // Pushes one value to the stack (e.g. "local_get")
   Simple = 1 << 3, // Doesn't need special handling during the initial scan (e.g. not "call")
   HasIndex = 1 << 4, // Has an index payload (e.g. "global_get")
-  HasHint = 1 << 5, // Has an align byte (e.g. "i32_store8") or a type byte (e.g. "ref_null")
+  HasMemory = 1 << 5, // Has a memory argument (e.g. "i32_store8")
   BoolToInt = 1 << 6, // Results in a boolean that must be casted back to an i32
   ToU32 = 1 << 7, // Arguments should be converted to 32-bit unsigned
   ToS64 = 1 << 8, // Arguments should be converted to 64-bit signed
@@ -310,29 +310,29 @@ const metaTable: Readonly<Record<number, number>> = {
   [Op.table_get]: 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
   [Op.table_set]: 2 | MetaFlag.HasIndex | MetaFlag.Simple,
 
-  [Op.i32_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.f32_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.f64_load]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load32_s]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_load32_u]: 1 | MetaFlag.Push | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.f32_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.f64_store]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_store8]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i32_store16]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_store8]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_store16]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
-  [Op.i64_store32]: 2 | MetaFlag.HasHint | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f32_load]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f64_load]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load8_s]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load8_u]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load16_s]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load16_u]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load32_s]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_load32_u]: 1 | MetaFlag.Push | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f32_store]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.f64_store]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store8]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i32_store16]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store8]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store16]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
+  [Op.i64_store32]: 2 | MetaFlag.HasMemory | MetaFlag.HasIndex | MetaFlag.Simple,
 
   [Op.memory_size]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
   [Op.memory_grow]: 1 | MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
@@ -475,7 +475,6 @@ const metaTable: Readonly<Record<number, number>> = {
   [Op.i64_extend16_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
   [Op.i64_extend32_s]: 1 | MetaFlag.Push | MetaFlag.Simple,
 
-  [Op.ref_null]: MetaFlag.Push | MetaFlag.HasHint | MetaFlag.Simple,
   [Op.ref_is_null]: 1 | MetaFlag.Push | MetaFlag.Simple | MetaFlag.BoolToInt,
   [Op.ref_func]: MetaFlag.Push | MetaFlag.HasIndex | MetaFlag.Simple,
 
@@ -537,7 +536,7 @@ export const compileCode = (
   elementSegments: (readonly (LazyFunc | null)[])[],
   globals: GlobalValue[],
   library: Library,
-  context: Context,
+  context: Record<string, any>,
   wasm: WASM,
   codeIndex: number,
   funcIndex: number,
@@ -624,19 +623,19 @@ export const compileCode = (
   }
 
   // Optimize the single-byte case using typed arrays
-  const load8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number): string => {
-    return `c.${field}[${emit(addr)}${offset ? '+' + offset : ''}]`
+  const load8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number, index: number): string => {
+    return `c.${field + index}[${emit(addr)}${offset ? '+' + offset : ''}]`
   }
-  const store8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number, value: string): string => {
-    return `c.${field}[${emit(addr)}${offset ? '+' + offset : ''}]=${value}`
+  const store8 = (field: 'int8Array_' | 'uint8Array_', addr: number, offset: number, index: number, value: string): string => {
+    return `c.${field + index}[${emit(addr)}${offset ? '+' + offset : ''}]=${value}`
   }
 
   // The multi-byte case must use the data view for alignment reasons
-  const load = <T extends string>(get: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number): string => {
-    return `c.${/* @__KEY__ */ 'dataView_'}.get${get}(${emit(addr)}${offset ? '+' + offset : ''},1)`
+  const load = <T extends string>(get: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number, index: number): string => {
+    return `c.${/* @__KEY__ */ 'dataView_' + index}.get${get}(${emit(addr)}${offset ? '+' + offset : ''},1)`
   }
-  const store = <T extends string>(set: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number, value: string): string => {
-    return `c.${/* @__KEY__ */ 'dataView_'}.set${set}(${emit(addr)}${offset ? '+' + offset : ''},${value},1)`
+  const store = <T extends string>(set: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number, index: number, value: string): string => {
+    return `c.${/* @__KEY__ */ 'dataView_' + index}.set${set}(${emit(addr)}${offset ? '+' + offset : ''},${value},1)`
   }
 
   const emit = (ptr: number): string => {
@@ -688,40 +687,34 @@ export const compileCode = (
       case Op.table_get: return tableName(ast[ptr + 2]) + `[${emit(ast[ptr + 1])}]`
       case Op.table_set: return tableName(ast[ptr + 3]) + `[${emit(ast[ptr + 1])}]=${emit(ast[ptr + 2])}`
 
-      case Op.i32_load: return load('Int32', ast[ptr + 1], ast[ptr + 2])
-      case Op.U32_LOAD: return load('Uint32', ast[ptr + 1], ast[ptr + 2])
-      case Op.i64_load: return load('BigUint64', ast[ptr + 1], ast[ptr + 2])
-      case Op.S64_LOAD: return load('BigInt64', ast[ptr + 1], ast[ptr + 2])
-      case Op.f32_load: return load('Float32', ast[ptr + 1], ast[ptr + 2])
-      case Op.f64_load: return load('Float64', ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load8_s: return load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load8_u: return load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load16_s: return load('Int16', ast[ptr + 1], ast[ptr + 2])
-      case Op.i32_load16_u: return load('Uint16', ast[ptr + 1], ast[ptr + 2])
-      case Op.i64_load8_s: return `BigInt(${load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_load8_u: return `BigInt(${load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2])})`
-      case Op.i64_load16_s: return `BigInt(${load('Int16', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_load16_u: return `BigInt(${load('Uint16', ast[ptr + 1], ast[ptr + 2])})`
-      case Op.i64_load32_s: return `BigInt(${load('Int32', ast[ptr + 1], ast[ptr + 2])})&0xFFFFFFFFFFFFFFFFn`
-      case Op.i64_load32_u: return `BigInt(${load('Uint32', ast[ptr + 1], ast[ptr + 2])})`
-      case Op.i32_store: return store('Int32', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i64_store: return store('BigUint64', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.f32_store: return store('Float32', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.f64_store: return store('Float64', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i32_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i32_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], emit(ast[ptr + 2]))
-      case Op.i64_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&255n)`)
-      case Op.i64_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&65535n)`)
-      case Op.i64_store32: return store('Int32', ast[ptr + 1], ast[ptr + 3], `Number(${emit(ast[ptr + 2])}&0xFFFFFFFFn)`)
+      case Op.i32_load: return load('Int32', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.U32_LOAD: return load('Uint32', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i64_load: return load('BigUint64', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.S64_LOAD: return load('BigInt64', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.f32_load: return load('Float32', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.f64_load: return load('Float64', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i32_load8_s: return load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i32_load8_u: return load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i32_load16_s: return load('Int16', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i32_load16_u: return load('Uint16', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])
+      case Op.i64_load8_s: return `BigInt(${load8(/* @__KEY__ */ 'int8Array_', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_load8_u: return `BigInt(${load8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})`
+      case Op.i64_load16_s: return `BigInt(${load('Int16', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_load16_u: return `BigInt(${load('Uint16', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})`
+      case Op.i64_load32_s: return `BigInt(${load('Int32', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})&0xFFFFFFFFFFFFFFFFn`
+      case Op.i64_load32_u: return `BigInt(${load('Uint32', ast[ptr + 1], ast[ptr + 2], ast[ptr + 3])})`
+      case Op.i32_store: return store('Int32', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.i64_store: return store('BigUint64', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.f32_store: return store('Float32', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.f64_store: return store('Float64', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.i32_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.i32_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], emit(ast[ptr + 2]))
+      case Op.i64_store8: return store8(/* @__KEY__ */ 'uint8Array_', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], `Number(${emit(ast[ptr + 2])}&255n)`)
+      case Op.i64_store16: return store('Int16', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], `Number(${emit(ast[ptr + 2])}&65535n)`)
+      case Op.i64_store32: return store('Int32', ast[ptr + 1], ast[ptr + 3], ast[ptr + 4], `Number(${emit(ast[ptr + 2])}&0xFFFFFFFFn)`)
 
-      case Op.memory_size: {
-        if (ast[ptr + 1]) throw Error('Unsupported non-zero memory index')
-        return `c.${/* @__KEY__ */ 'memory_'}.${/* @__KEY__ */ 'pageCount_'}`
-      }
-      case Op.memory_grow: {
-        if (ast[ptr + 2]) throw Error('Unsupported non-zero memory index')
-        return `c.${/* @__KEY__ */ 'memory_'}.${/* @__KEY__ */ 'grow_'}(${emit(ast[ptr + 1])})`
-      }
+      case Op.memory_size: return `c.${/* @__KEY__ */ 'memory_' + ast[ptr + 1]}.${/* @__KEY__ */ 'pageCount_'}`
+      case Op.memory_grow: return `c.${/* @__KEY__ */ 'memory_' + ast[ptr + 2]}.${/* @__KEY__ */ 'grow_'}(${emit(ast[ptr + 1])})`
 
       case Op.i32_const: return ast[ptr + 1] + ''
       case Op.i64_const: return (constants[ast[ptr + 1]] & 0xFFFF_FFFF_FFFF_FFFFn) + 'n'
@@ -829,13 +822,13 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
-      case Op.memory_init: return `c.${/* @__KEY__ */ 'uint8Array_'}.set(d[${ast[ptr + 4]}].subarray(T=${emit(ast[ptr + 1])},T+${emit(ast[ptr + 2])}),${emit(ast[ptr + 3])})`
+      case Op.memory_init: return `l.${/* @__KEY__ */ 'memory_copy_'}(d[${ast[ptr + 4]}],c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.data_drop: {
         if (ast[ptr + 1] >= dataSegments.length) throw Error('Invalid data index: ' + ast[ptr + 1])
         return `d[${ast[ptr + 1]}]=new Uint8Array`
       }
-      case Op.memory_copy: return `c.${/* @__KEY__ */ 'uint8Array_'}.copyWithin(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
-      case Op.memory_fill: return `c.${/* @__KEY__ */ 'uint8Array_'}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
+      case Op.memory_copy: return `l.${/* @__KEY__ */ 'memory_copy_'}(c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]},c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
+      case Op.memory_fill: return `c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.elem_drop: {
@@ -1188,17 +1181,19 @@ export const compileCode = (
           }
         }
         if (!(flags & MetaFlag.Omit)) {
-          if (flags & MetaFlag.HasHint) bytesPtr++ // Hint bytes are ignored
+          let memoryIndex = 0
+          if (flags & MetaFlag.HasMemory && bytes[bytesPtr++] & 0x40) memoryIndex = readU32LEB()
           astPtrs.push(astNextPtr)
           if (flags & MetaFlag.Push) op |= (stackTop + 1) << Pack.OutSlotShift
           ast[astNextPtr++] = op | (childCount << Pack.ChildCountShift)
           for (let i = 1; i <= childCount; i++) ast[astNextPtr++] = -(stackTop + i)
           if (flags & MetaFlag.HasIndex) ast[astNextPtr++] = readU32LEB()
+          if (flags & MetaFlag.HasMemory) ast[astNextPtr++] = memoryIndex
         }
         if (flags & MetaFlag.Push) stackTop++
         if (flags & MetaFlag.BoolToInt) pushUnary(Op.BOOL_TO_INT)
       } else {
-        if (flags & MetaFlag.HasHint) bytesPtr++
+        if (flags & MetaFlag.HasMemory && bytes[bytesPtr++] & 0x40) readU32LEB()
         if (flags & MetaFlag.HasIndex) readU32LEB()
       }
     }
@@ -1415,6 +1410,14 @@ export const compileCode = (
         bytesPtr += 8
         break
 
+      case Op.ref_null:
+        bytesPtr++ // Ignore the type
+        if (!blocks[blocks.length - 1].isDead_) {
+          astPtrs.push(astNextPtr)
+          ast[astNextPtr++] = op | (++stackTop << Pack.OutSlotShift)
+        }
+        break
+
       case 0xFC:
         // This is a prefix for a subset of instructions
         op = 0xFC00 | bytes[bytesPtr++]
@@ -1427,24 +1430,25 @@ export const compileCode = (
         // A few opcodes need special handling and can't be decoded with a table
         switch (op) {
           case Op.memory_init: {
-            const index = readU32LEB()
-            if (bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Destination
-            if (index >= dataSegments.length) throw Error('Invalid passive data index: ' + index)
+            const dataIndex = readU32LEB()
+            const destinationIndex = readU32LEB()
+            if (dataIndex >= dataSegments.length) throw Error('Invalid passive data index: ' + dataIndex)
             if (!blocks[blocks.length - 1].isDead_) {
-              // Note: JS evaluation order is different than WASM evaluation order here
               stackTop -= 2
               astPtrs.push(astNextPtr)
               ast[astNextPtr++] = op | (3 << Pack.ChildCountShift) | (stackTop << Pack.OutSlotShift)
+              ast[astNextPtr++] = -stackTop
               ast[astNextPtr++] = -(stackTop + 1)
               ast[astNextPtr++] = -(stackTop + 2)
-              ast[astNextPtr++] = -stackTop
-              ast[astNextPtr++] = index
+              ast[astNextPtr++] = dataIndex
+              ast[astNextPtr++] = destinationIndex
             }
             break
           }
 
-          case Op.memory_copy:
-            if (bytes[bytesPtr++] || bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Source and destination
+          case Op.memory_copy: {
+            const destinationIndex = readU32LEB()
+            const sourceIndex = readU32LEB()
             if (!blocks[blocks.length - 1].isDead_) {
               stackTop -= 2
               astPtrs.push(astNextPtr)
@@ -1452,11 +1456,14 @@ export const compileCode = (
               ast[astNextPtr++] = -stackTop
               ast[astNextPtr++] = -(stackTop + 1)
               ast[astNextPtr++] = -(stackTop + 2)
+              ast[astNextPtr++] = sourceIndex
+              ast[astNextPtr++] = destinationIndex
             }
             break
+          }
 
-          case Op.memory_fill:
-            if (bytes[bytesPtr++]) throw Error('Unsupported non-zero memory index') // Destination
+          case Op.memory_fill: {
+            const destinationIndex = readU32LEB()
             if (!blocks[blocks.length - 1].isDead_) {
               // Note: JS evaluation order is different than WASM evaluation order here
               stackTop -= 2
@@ -1465,8 +1472,10 @@ export const compileCode = (
               ast[astNextPtr++] = -(stackTop + 1)
               ast[astNextPtr++] = -stackTop
               ast[astNextPtr++] = -(stackTop + 2)
+              ast[astNextPtr++] = destinationIndex
             }
             break
+          }
 
           case Op.table_init: {
             const element = readU32LEB()

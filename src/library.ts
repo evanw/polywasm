@@ -115,6 +115,13 @@ export const createLibrary = () => {
     i64_extend32_s_(x: bigint): bigint {
       return x & 0x8000_0000n ? x | 0xFFFF_FFFF_0000_0000n : x & 0xFFFF_FFFFn
     },
+    memory_copy_(source: Uint8Array, destination: Uint8Array, target: number, start: number, count: number): void {
+      if (source === destination) {
+        destination.copyWithin(target, start, start + count)
+      } else {
+        destination.set(source.subarray(start, start + count), target)
+      }
+    },
     table_init_or_copy_(x: (LazyFunc | null)[], y: (LazyFunc | null)[], d: number, s: number, n: number): void {
       d >>>= 0
       s >>>= 0
