@@ -178,7 +178,6 @@ export class Instance {
       for (const index of indices) segment.push(index === null ? null : createLazyFunc(index))
       elementSegments.push(segment)
       if (tableIndex !== null && initializer !== null) {
-        if (tableIndex >= tables.length) throw Error('Invalid table index: ' + tableIndex)
         const table = tables[tableIndex]
         let offset = initializer(globals)
         for (const value of segment) table[offset++] = value
@@ -190,7 +189,6 @@ export class Instance {
       if (desc === Desc.Func) {
         exports[name] = library.exportLazyFunc_(createLazyFunc(index))!
       } else if (desc === Desc.Table) {
-        if (index >= tables.length) throw Error('Invalid table index: ' + index)
         const table = tables[index]
         const value = new Table
         Object.defineProperty(value, 'length', {
@@ -252,7 +250,7 @@ export class Memory {
   constructor({ initial, maximum }: WebAssembly.MemoryDescriptor) {
     initial = clampPageCount(initial)
     maximum = clampPageCount(maximum ?? Infinity)
-    if (initial < 0 || initial > maximum) throw RangeError('Invalid memory descriptor')
+    if (initial < 0 || initial > maximum) throw RangeError()
 
     const initialBuffer = new ArrayBuffer(initial << 16)
     const internal: InternalMemory = {
@@ -301,7 +299,7 @@ export class Memory {
     })
     this.grow = pageDelta => {
       const pageCount = internal.grow_(pageDelta)
-      if (pageCount < 0) throw RangeError('Cannot grow past limit')
+      if (pageCount < 0) throw RangeError()
       return pageCount
     }
   }

@@ -615,7 +615,6 @@ export const compileCode = (
   const usedTables: Record<number, boolean> = {}
   const tableName = (index: number): string => {
     if (!usedTables[index]) {
-      if (index >= tables.length) throw Error('Invalid table index: ' + index)
       decls.push(`t${index}=t[${index}]`)
       usedTables[index] = true
     }
@@ -823,18 +822,12 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
       case Op.memory_init: return `l.${/* @__KEY__ */ 'memory_copy_'}(d[${ast[ptr + 4]}],c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
-      case Op.data_drop: {
-        if (ast[ptr + 1] >= dataSegments.length) throw Error('Invalid data index: ' + ast[ptr + 1])
-        return `d[${ast[ptr + 1]}]=new Uint8Array`
-      }
+      case Op.data_drop: return `d[${ast[ptr + 1]}]=new Uint8Array`
       case Op.memory_copy: return `l.${/* @__KEY__ */ 'memory_copy_'}(c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]},c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
-      case Op.elem_drop: {
-        if (ast[ptr + 1] >= elementSegments.length) throw Error('Invalid element index: ' + ast[ptr + 1])
-        return `e[${ast[ptr + 1]}]=[]`
-      }
+      case Op.elem_drop: return `e[${ast[ptr + 1]}]=[]`
       case Op.table_copy: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},${tableName(ast[ptr + 5])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.table_grow: return `l.${/* @__KEY__ */ 'table_grow_'}(${tableName(ast[ptr + 3])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${Math.min(0xFFFF_FFFF, tableSection[ast[ptr + 3]][2])})`
       case Op.table_size: return tableName(ast[ptr + 1]) + '.length'
@@ -1334,7 +1327,6 @@ export const compileCode = (
       case Op.call_indirect: {
         const typeIndex = readU32LEB()
         const tableIndex = readU32LEB()
-        if (tableIndex >= tables.length) throw Error('Invalid table index: ' + tableIndex)
         if (!blocks[blocks.length - 1].isDead_) {
           const [argTypes, returnTypes] = typeSection[typeIndex]
           stackTop -= argTypes.length + 1
@@ -1432,7 +1424,6 @@ export const compileCode = (
           case Op.memory_init: {
             const dataIndex = readU32LEB()
             const destinationIndex = readU32LEB()
-            if (dataIndex >= dataSegments.length) throw Error('Invalid passive data index: ' + dataIndex)
             if (!blocks[blocks.length - 1].isDead_) {
               stackTop -= 2
               astPtrs.push(astNextPtr)
@@ -1478,9 +1469,8 @@ export const compileCode = (
           }
 
           case Op.table_init: {
-            const element = readU32LEB()
-            const table = readU32LEB()
-            if (element >= elementSegments.length) throw Error('Invalid element index: ' + element)
+            const elementIndex = readU32LEB()
+            const tableIndex = readU32LEB()
             if (!blocks[blocks.length - 1].isDead_) {
               stackTop -= 2
               astPtrs.push(astNextPtr)
@@ -1488,8 +1478,8 @@ export const compileCode = (
               ast[astNextPtr++] = -stackTop
               ast[astNextPtr++] = -(stackTop + 1)
               ast[astNextPtr++] = -(stackTop + 2)
-              ast[astNextPtr++] = table
-              ast[astNextPtr++] = element
+              ast[astNextPtr++] = tableIndex
+              ast[astNextPtr++] = elementIndex
             }
             break
           }
