@@ -6,10 +6,10 @@ This is a polyfill for WebAssembly. It implements enough of the [WebAssembly API
 
 This polyfill is used as a fallback WebAssembly implementation for esbuild's online playground. You can use these links below to compare the playground with this polyfill enabled vs. disabled:
 
-- [Try esbuild playground's with this polyfill enabled](https://esbuild.github.io/try/?polywasm=1)
-- [Try esbuild playground's with this polyfill disabled](https://esbuild.github.io/try/?polywasm=0)
+- [Try esbuild playground's with this polyfill enabled](https://esbuild.github.io/try/?polywasm=1#dAAwLjI0LjAALS1taW5pZnkgLS1sb2FkZXI9dHMAY29uc3QgYWRkID0gKGZpcnN0OiBudW1iZXIsIHNlY29uZDogbnVtYmVyKTogbnVtYmVyID0+IHsKICByZXR1cm4gZmlyc3QgKyBzZWNvbmQKfQ)
+- [Try esbuild playground's with this polyfill disabled](https://esbuild.github.io/try/?polywasm=0#dAAwLjI0LjAALS1taW5pZnkgLS1sb2FkZXI9dHMAY29uc3QgYWRkID0gKGZpcnN0OiBudW1iZXIsIHNlY29uZDogbnVtYmVyKTogbnVtYmVyID0+IHsKICByZXR1cm4gZmlyc3QgKyBzZWNvbmQKfQ)
 
-The playground shows off [esbuild](https://esbuild.github.io/), which is a JavaScript code transformation tool (among other things). You'll need to type or paste some JavaScript code into the `(enter your code here)` textbox for esbuild to run.
+The playground shows off [esbuild](https://esbuild.github.io/), which is a JavaScript code transformation tool (among other things) that has been compiled to WebAssembly.
 
 ## Why does this exist?
 
@@ -31,7 +31,9 @@ You need to include this polyfill before code that uses the WebAssembly API:
 <script src="app.js"></script>
 ```
 
-The polyfill is small (only ~25kb when minified) and can potentially be optionally loaded only when needed. Keep in mind that this polyfill requires that your JavaScript environment supports the [`BigInt64Array`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array) API. If you want to build the polyfill yourself instead of installing it through npm, you can clone this repo and run `npm ci` follwed by `npm run build`.
+This polyfill is published to npm in the [`polywasm`](https://www.npmjs.com/package/polywasm) package which contains the files `polywasm/index.js` and `polywasm/index.min.js`. If you want to build the polyfill yourself instead of installing it through npm, you can clone this repo and run `npm ci` follwed by `npm run build`.
+
+The minified code is small (only ~32kb) and can potentially be optionally loaded only when needed. Keep in mind that this polyfill requires that your JavaScript environment supports the [`BigInt64Array`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt64Array) API.
 
 ## Limitations
 
