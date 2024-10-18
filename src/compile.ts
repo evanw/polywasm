@@ -20,6 +20,8 @@ export enum Op {
   return = 0x0F,
   call = 0x10,
   call_indirect = 0x11,
+  return_call = 0x12,
+  return_call_indirect = 0x13,
 
   drop = 0x1A,
   select = 0x1B,
@@ -647,22 +649,26 @@ export const compileCode = (
 
   const emitUnwrapped = (ptr: number): string => {
     const node = ast[ptr]
+    const op = node & Pack.OpMask
 
-    switch (node & Pack.OpMask) {
-      case Op.call: {
+    switch (op) {
+      case Op.call:
+      case Op.return_call: {
         const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
         const funcIndex = ast[ptr + childCount + 1]
         const [argTypes, returnTypes] = funcTypes[funcIndex]
         const args: string[] = []
         for (let i = 1; i <= childCount; i++) args.push(emit(ast[ptr + i]))
-        const code = `f[${funcIndex}](${args})`
+        const fn = `f[${funcIndex}]`
+        const code = op === Op.return_call ? `l.${/* @__KEY__ */ 'return_call_'}(this,${fn},[${args}])` : `${fn}(${args})`
         if (returnTypes.length < 2) return code
         const slot = ast[ptr + childCount + 2]
         const returns: string[] = []
         for (let i = 0; i < returnTypes.length; i++) returns.push(stackSlotName(slot + i))
         return `[${returns}]=${code}`
       }
-      case Op.call_indirect: {
+      case Op.call_indirect:
+      case Op.return_call_indirect: {
         const childCount = (node >> Pack.ChildCountShift) & Pack.ChildCountMask
         const tableIndex = ast[ptr + childCount + 2]
         const typeIndex = ast[ptr + childCount + 3]
@@ -670,7 +676,8 @@ export const compileCode = (
         const args: string[] = []
         const funcIndex = emit(ast[ptr + 1])
         for (let i = 1; i <= childCount; i++) args.push(emit(ast[ptr + i + 1]))
-        const code = tableName(tableIndex) + `[${funcIndex}].${/* @__KEY__ */ 'compiled_'}(${args})`
+        const fn = `${tableName(tableIndex)}[${funcIndex}].${/* @__KEY__ */ 'compiled_'}`
+        const code = op === Op.return_call_indirect ? `l.${/* @__KEY__ */ 'return_call_'}(this,${fn},[${args}])` : `${fn}(${args})`
         if (returnTypes.length < 2) return code
         const slot = ast[ptr + childCount + 4]
         const returns: string[] = []
@@ -852,6 +859,12 @@ export const compileCode = (
     astPtrs.push(astNextPtr)
     ast[astNextPtr++] = op | (1 << Pack.ChildCountShift) | (stackSlot << Pack.OutSlotShift)
     ast[astNextPtr++] = -stackSlot
+  }
+
+  const handleReturn = (): void => {
+    finalizeBasicBlock()
+    jump(0)
+    blocks[blocks.length - 1].isDead_ = true
   }
 
   const finalizeBasicBlock = (popStackTop = false): string | undefined => {
@@ -1307,12 +1320,12 @@ export const compileCode = (
       }
 
       case Op.return:
-        finalizeBasicBlock()
-        jump(0)
-        blocks[blocks.length - 1].isDead_ = true
+        handleReturn()
         break
 
-      case Op.call: {
+      case Op.call:
+      case Op.return_call: {
+        const needsReturn = op === Op.return_call
         const funcIndex = readU32LEB()
         if (!blocks[blocks.length - 1].isDead_) {
           const [argTypes, returnTypes] = funcTypes[funcIndex]
@@ -1325,10 +1338,13 @@ export const compileCode = (
           if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
           stackTop += returnTypes.length
         }
+        if (needsReturn) handleReturn()
         break
       }
 
-      case Op.call_indirect: {
+      case Op.call_indirect:
+      case Op.return_call_indirect: {
+        const needsReturn = op === Op.return_call_indirect
         const typeIndex = readU32LEB()
         const tableIndex = readU32LEB()
         if (!blocks[blocks.length - 1].isDead_) {
@@ -1344,6 +1360,7 @@ export const compileCode = (
           if (returnTypes.length > 1) ast[astNextPtr++] = stackTop + 1 // Append the first stack slot for unpacking the return values
           stackTop += returnTypes.length
         }
+        if (needsReturn) handleReturn()
         break
       }
 

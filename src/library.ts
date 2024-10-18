@@ -8,6 +8,12 @@ const i32 = new Int32Array(buffer)
 const i64 = new BigInt64Array(buffer)
 const u64 = new BigUint64Array(buffer)
 const exportedFuncs = new WeakMap<Function, LazyFunc>()
+const emptyArray: never[] = []
+
+class Trampoline {
+  declare fn_: Function | null
+  declare args_: any[]
+}
 
 export const library = {
   copysign_(x: number, y: number): number {
@@ -142,6 +148,26 @@ export const library = {
     n >>>= 0
     if (i + n > x.length) throw RangeError()
     for (let j = 0; j < n; j++) x[i + j] = val
+  },
+  return_call_(context: Trampoline, fn: Function, args: any[]): any {
+    if (context instanceof Trampoline) {
+      context.fn_ = fn
+      context.args_ = args
+      return emptyArray // Don't crash when destructuring multiple return values
+    }
+
+    // Technically this isn't a true tail call because the first call frame in a
+    // chain of successive nested tail calls isn't collapsed, but it should help
+    // to avoid stack overflow in common tail call usage, even with two or more
+    // mutually tail-recursive functions.
+    context = new Trampoline
+    let result: any
+    while ((result = fn.apply(context, args)), context.fn_) {
+      fn = context.fn_
+      args = context.args_
+      context.fn_ = null
+    }
+    return result
   },
   importLazyFunc_(fn: Function | null): LazyFunc | null {
     if (fn === null) return fn

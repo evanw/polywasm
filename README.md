@@ -60,7 +60,7 @@ The following WebAssembly proposals with a ✅ next to them have been implemente
 | [Reference Types](https://github.com/WebAssembly/reference-types)                                            | ✅        |
 | [Multiple Memories](https://github.com/WebAssembly/multi-memory)                                             | ✅        |
 | [Extended Constant Expressions](https://github.com/WebAssembly/extended-const)                               | ✅        |
-| [Tail Call](https://github.com/WebAssembly/tail-call)                                                        | ❌        |
+| [Tail Call](https://github.com/WebAssembly/tail-call)                                                        | ✅        |
 | [Fixed-width SIMD](https://github.com/WebAssembly/simd)                                                      | ❌        |
 | [Garbage Collection](https://github.com/WebAssembly/gc)                                                      | ❌        |
 

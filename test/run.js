@@ -14,6 +14,7 @@ import path from 'path'
 const coreTestDir = path.join(url.fileURLToPath(import.meta.url), '..', 'core')
 const extendedConstTestDir = path.join(coreTestDir, 'extended-const')
 const multiMemoryTestDir = path.join(coreTestDir, 'multi-memory')
+const tailCallTestDir = path.join(coreTestDir, 'tail-call')
 const testHarness = fs.readFileSync(path.join(coreTestDir, 'harness', 'sync_index.js'), 'utf8')
   .replace(/\$\{e\.stack\}(\\n)?/g, '')
 
@@ -21,6 +22,7 @@ const tests = []
 for (const name of fs.readdirSync(coreTestDir)) tests.push(path.join(coreTestDir, name))
 for (const name of fs.readdirSync(extendedConstTestDir)) tests.push(path.join(extendedConstTestDir, name))
 for (const name of fs.readdirSync(multiMemoryTestDir)) tests.push(path.join(multiMemoryTestDir, name))
+for (const name of fs.readdirSync(tailCallTestDir)) tests.push(path.join(tailCallTestDir, name))
 
 function runTests(wasm) {
   const counters = {
