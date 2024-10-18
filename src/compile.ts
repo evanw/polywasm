@@ -627,7 +627,13 @@ export const compileCode = (
     return `c.${field + index}[${emit(addr)}${offset ? '+' + offset : ''}]=${value}`
   }
 
-  // The multi-byte case must use the data view for alignment reasons
+  // The multi-byte case must use a DataView for alignment reasons. Note that
+  // the performance of DataView vs. typed array views appears to be identical
+  // (tested in Chrome, Firefox, and Safari) even though DataView is a method
+  // call with additional parameters and typed array views use a subscript
+  // operator. So while the alignment hints in these memory accesses could be
+  // used to avoid using a DataView, we ignore them instead because there's no
+  // reason to use them.
   const load = <T extends string>(get: T extends 'Int8' | 'Uint8' ? never : T, addr: number, offset: number, index: number): string => {
     return `c.${/* @__KEY__ */ 'dataView_' + index}.get${get}(${emit(addr)}${offset ? '+' + offset : ''},1)`
   }
