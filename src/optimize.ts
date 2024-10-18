@@ -13,12 +13,11 @@ const enum Enable {
   Stats = 0, // Set this to 1 to enable statistics
 }
 
-type OpWithPayload =
+// Memory operands now have two payloads (the offset and the memory index)
+// For more info see: https://github.com/WebAssembly/multi-memory
+type OpWithTwoPayloads =
   | Op.U32_LOAD
   | Op.S64_LOAD
-
-  | Op.i32_const
-  | Op.i64_const
 
   | Op.i32_load
   | Op.i64_load
@@ -45,7 +44,11 @@ type OpWithPayload =
   | Op.i64_store16
   | Op.i64_store32
 
-type OpWithoutPayload =
+type OpWithOnePayload =
+  | Op.i32_const
+  | Op.i64_const
+
+type OpWithNoPayload =
   | Op.BOOL
   | Op.BOOL_NOT
   | Op.BOOL_TO_INT
@@ -118,22 +121,28 @@ type OpWithoutPayload =
   | Op.i64_extend_i32_s
   | Op.i64_extend_i32_u
 
+const isPayload = (operand: Replace | ReplacePayload | undefined): boolean => {
+  return typeof operand === 'string' ? operand >= 'P' && operand <= 'S' : operand ? typeof operand[0] !== 'string' && operand[0] < 0 : false
+}
+
 // AST nodes consist of a leading opcode, zero or more child expressions, and
 // an optional trailing payload. The payload is separated out because it isn't
 // included in the AST node's child count (which allows for generic traversal).
 type Expr = 'x' | 'y' | 'z'
-type Payload = 'P' | 'Q'
+type Payload = 'P' | 'Q' | 'R' | 'S'
 type OneOfWithoutPayload = '@'
 type OneOfWithPayload = '$'
 
 type Match =
-  | [OpWithoutPayload | [OneOfWithoutPayload, ...OpWithoutPayload[]], ...(Match | Expr)[]]
-  | [OpWithPayload | [OneOfWithPayload, ...OpWithPayload[]], ...(Match | Expr)[], Payload]
+  | [OpWithNoPayload | [OneOfWithoutPayload, ...OpWithNoPayload[]], ...(Match | Expr)[]]
+  | [OpWithOnePayload | [OneOfWithPayload, ...OpWithOnePayload[]], ...(Match | Expr)[], Payload]
+  | [OpWithTwoPayloads | [OneOfWithPayload, ...OpWithTwoPayloads[]], ...(Match | Expr)[], Payload, Payload]
 
 type Replace =
   | Expr
-  | [OpWithoutPayload | OneOfWithoutPayload, ...Replace[]]
-  | [OpWithPayload | OneOfWithPayload, ...Replace[], ReplacePayload]
+  | [OpWithNoPayload | OneOfWithoutPayload, ...Replace[]]
+  | [OpWithOnePayload | OneOfWithPayload, ...Replace[], ReplacePayload]
+  | [OpWithTwoPayloads | OneOfWithPayload, ...Replace[], ReplacePayload, Payload]
 
 const enum Edit {
   i64_to_i32 = -1,
@@ -170,8 +179,9 @@ const rules: Rule[] = [
       ],
       [Op.i32_add, 'x', [Op.i32_const, 'Q']],
       'P',
+      'R',
     ],
-    replace_: ['$', 'x', [Edit.i32_add, 'P', 'Q']],
+    replace_: ['$', 'x', [Edit.i32_add, 'P', 'Q'], 'R'],
   },
 
   // store of (addr + constant) => merge constant into store's offset
@@ -185,18 +195,19 @@ const rules: Rule[] = [
       [Op.i32_add, 'x', [Op.i32_const, 'Q']],
       'y',
       'P',
+      'R',
     ],
-    replace_: ['$', 'x', 'y', [Edit.i32_add, 'P', 'Q']],
+    replace_: ['$', 'x', 'y', [Edit.i32_add, 'P', 'Q'], 'R'],
   },
 
   // i64_store8 => i32_store8
   {
-    match_: [Op.i64_store8, 'x', 'y', 'P'],
+    match_: [Op.i64_store8, 'x', 'y', 'P', 'R'],
     nested_: {
       'y': [
         {
           match_: [Op.i64_const, 'Q'],
-          replace_: [Op.i32_store8, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P'],
+          replace_: [Op.i32_store8, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P', 'R'],
         },
         {
           match_: [
@@ -208,12 +219,13 @@ const rules: Rule[] = [
             ],
             'z',
             'Q',
+            'S',
           ],
-          replace_: [Op.i32_store8, 'x', [Op.i32_load8_u, 'z', 'Q'], 'P'],
+          replace_: [Op.i32_store8, 'x', [Op.i32_load8_u, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
           match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
-          replace_: [Op.i32_store8, 'x', 'z', 'P'],
+          replace_: [Op.i32_store8, 'x', 'z', 'P', 'R'],
         },
       ],
     },
@@ -221,20 +233,20 @@ const rules: Rule[] = [
 
   // i64_store16 => i32_store16
   {
-    match_: [Op.i64_store16, 'x', 'y', 'P'],
+    match_: [Op.i64_store16, 'x', 'y', 'P', 'R'],
     nested_: {
       'y': [
         {
           match_: [Op.i64_const, 'Q'],
-          replace_: [Op.i32_store16, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P'],
+          replace_: [Op.i32_store16, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load8_s, 'z', 'Q'],
-          replace_: [Op.i32_store16, 'x', [Op.i32_load8_s, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load8_s, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store16, 'x', [Op.i32_load8_s, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load8_u, 'z', 'Q'],
-          replace_: [Op.i32_store16, 'x', [Op.i32_load8_u, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load8_u, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store16, 'x', [Op.i32_load8_u, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
           match_: [
@@ -245,12 +257,13 @@ const rules: Rule[] = [
             ],
             'z',
             'Q',
+            'S',
           ],
-          replace_: [Op.i32_store16, 'x', [Op.i32_load16_u, 'z', 'Q'], 'P'],
+          replace_: [Op.i32_store16, 'x', [Op.i32_load16_u, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
           match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
-          replace_: [Op.i32_store16, 'x', 'z', 'P'],
+          replace_: [Op.i32_store16, 'x', 'z', 'P', 'R'],
         },
       ],
     },
@@ -258,28 +271,28 @@ const rules: Rule[] = [
 
   // i64_store32 => i32_store
   {
-    match_: [Op.i64_store32, 'x', 'y', 'P'],
+    match_: [Op.i64_store32, 'x', 'y', 'P', 'R'],
     nested_: {
       'y': [
         {
           match_: [Op.i64_const, 'Q'],
-          replace_: [Op.i32_store, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P'],
+          replace_: [Op.i32_store, 'x', [Op.i32_const, [Edit.i64_to_i32, 'Q']], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load8_s, 'z', 'Q'],
-          replace_: [Op.i32_store, 'x', [Op.i32_load8_s, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load8_s, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store, 'x', [Op.i32_load8_s, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load8_u, 'z', 'Q'],
-          replace_: [Op.i32_store, 'x', [Op.i32_load8_u, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load8_u, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store, 'x', [Op.i32_load8_u, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load16_s, 'z', 'Q'],
-          replace_: [Op.i32_store, 'x', [Op.i32_load16_s, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load16_s, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store, 'x', [Op.i32_load16_s, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
-          match_: [Op.i64_load16_u, 'z', 'Q'],
-          replace_: [Op.i32_store, 'x', [Op.i32_load16_u, 'z', 'Q'], 'P'],
+          match_: [Op.i64_load16_u, 'z', 'Q', 'S'],
+          replace_: [Op.i32_store, 'x', [Op.i32_load16_u, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
           match_: [
@@ -289,12 +302,13 @@ const rules: Rule[] = [
             ],
             'z',
             'Q',
+            'S',
           ],
-          replace_: [Op.i32_store, 'x', [Op.i32_load, 'z', 'Q'], 'P'],
+          replace_: [Op.i32_store, 'x', [Op.i32_load, 'z', 'Q', 'S'], 'P', 'R'],
         },
         {
           match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'z'],
-          replace_: [Op.i32_store, 'x', 'z', 'P'],
+          replace_: [Op.i32_store, 'x', 'z', 'P', 'R'],
         },
       ],
     },
@@ -306,16 +320,16 @@ const rules: Rule[] = [
     nested_: {
       'x': [
         {
-          match_: [['$', Op.i64_load8_s, Op.i64_load8_u], 'y', 'P'],
-          replace_: [Op.i32_eqz, [Op.i32_load8_u, 'y', 'P']],
+          match_: [['$', Op.i64_load8_s, Op.i64_load8_u], 'y', 'P', 'R'],
+          replace_: [Op.i32_eqz, [Op.i32_load8_u, 'y', 'P', 'R']],
         },
         {
-          match_: [['$', Op.i64_load16_s, Op.i64_load16_u], 'y', 'P'],
-          replace_: [Op.i32_eqz, [Op.i32_load16_u, 'y', 'P']],
+          match_: [['$', Op.i64_load16_s, Op.i64_load16_u], 'y', 'P', 'R'],
+          replace_: [Op.i32_eqz, [Op.i32_load16_u, 'y', 'P', 'R']],
         },
         {
-          match_: [['$', Op.i64_load32_s, Op.i64_load32_u], 'y', 'P'],
-          replace_: [Op.i32_eqz, [Op.i32_load, 'y', 'P']],
+          match_: [['$', Op.i64_load32_s, Op.i64_load32_u], 'y', 'P', 'R'],
+          replace_: [Op.i32_eqz, [Op.i32_load, 'y', 'P', 'R']],
         },
         {
           match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
@@ -327,33 +341,33 @@ const rules: Rule[] = [
 
   // 64-bit equality on unsigned 32-bit load => 32-bit equality
   {
-    match_: [Op.i64_eq, [Op.i64_load8_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_eq, [Op.i32_load8_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_eq, [Op.i64_load8_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load8_u, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFn],
   },
   {
-    match_: [Op.i64_ne, [Op.i64_load8_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_ne, [Op.i32_load8_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_ne, [Op.i64_load8_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load8_u, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFn],
   },
   {
-    match_: [Op.i64_eq, [Op.i64_load16_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_eq, [Op.i32_load16_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_eq, [Op.i64_load16_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load16_u, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFFFn],
   },
   {
-    match_: [Op.i64_ne, [Op.i64_load16_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_ne, [Op.i32_load16_u, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_ne, [Op.i64_load16_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load16_u, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFFFn],
   },
   {
-    match_: [Op.i64_eq, [Op.i64_load32_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_eq, [Op.i32_load, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_eq, [Op.i64_load32_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_eq, [Op.i32_load, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFFFFFFFn],
   },
   {
-    match_: [Op.i64_ne, [Op.i64_load32_u, 'x', 'P'], [Op.i64_const, 'Q']],
-    replace_: [Op.i32_ne, [Op.i32_load, 'x', 'P'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
+    match_: [Op.i64_ne, [Op.i64_load32_u, 'x', 'P', 'R'], [Op.i64_const, 'Q']],
+    replace_: [Op.i32_ne, [Op.i32_load, 'x', 'P', 'R'], [Op.i32_const, [Edit.i64_to_i32, 'Q']]],
     onlyIf_: ['Q', '<=', 0xFFFFFFFFn],
   },
 
@@ -408,8 +422,8 @@ const rules: Rule[] = [
     nested_: {
       'x': [
         {
-          match_: [Op.i32_load, 'y', 'P'],
-          replace_: [Op.U32_LOAD, 'y', 'P'],
+          match_: [Op.i32_load, 'y', 'P', 'R'],
+          replace_: [Op.U32_LOAD, 'y', 'P', 'R'],
         },
       ],
     },
@@ -419,8 +433,8 @@ const rules: Rule[] = [
     nested_: {
       'x': [
         {
-          match_: [Op.i64_load, 'y', 'P'],
-          replace_: [Op.S64_LOAD, 'y', 'P'],
+          match_: [Op.i64_load, 'y', 'P', 'R'],
+          replace_: [Op.S64_LOAD, 'y', 'P', 'R'],
         },
         // No sign conversion is needed for values in the shared signed/unsigned range
         {
@@ -429,8 +443,8 @@ const rules: Rule[] = [
           onlyIf_: ['P', '<=', 0x7FFF_FFFF_FFFF_FFFFn],
         },
         {
-          match_: [['$', Op.i64_load8_u, Op.i64_load16_u, Op.i64_load32_u], 'y', 'P'],
-          replace_: ['$', 'y', 'P'],
+          match_: [['$', Op.i64_load8_u, Op.i64_load16_u, Op.i64_load32_u], 'y', 'P', 'R'],
+          replace_: ['$', 'y', 'P', 'R'],
         },
       ],
     },
@@ -446,24 +460,24 @@ const rules: Rule[] = [
           replace_: [Op.i32_const, [Edit.i64_to_i32, 'P']],
         },
         {
-          match_: [Op.i64_load8_s, 'y', 'P'],
-          replace_: [Op.i32_load8_s, 'y', 'P'],
+          match_: [Op.i64_load8_s, 'y', 'P', 'R'],
+          replace_: [Op.i32_load8_s, 'y', 'P', 'R'],
         },
         {
-          match_: [Op.i64_load8_u, 'y', 'P'],
-          replace_: [Op.i32_load8_u, 'y', 'P'],
+          match_: [Op.i64_load8_u, 'y', 'P', 'R'],
+          replace_: [Op.i32_load8_u, 'y', 'P', 'R'],
         },
         {
-          match_: [Op.i64_load16_s, 'y', 'P'],
-          replace_: [Op.i32_load16_s, 'y', 'P'],
+          match_: [Op.i64_load16_s, 'y', 'P', 'R'],
+          replace_: [Op.i32_load16_s, 'y', 'P', 'R'],
         },
         {
-          match_: [Op.i64_load16_u, 'y', 'P'],
-          replace_: [Op.i32_load16_u, 'y', 'P'],
+          match_: [Op.i64_load16_u, 'y', 'P', 'R'],
+          replace_: [Op.i32_load16_u, 'y', 'P', 'R'],
         },
         {
-          match_: [['$', Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'y', 'P'],
-          replace_: [Op.i32_load, 'y', 'P'],
+          match_: [['$', Op.i64_load32_s, Op.i64_load32_u, Op.i64_load], 'y', 'P', 'R'],
+          replace_: [Op.i32_load, 'y', 'P', 'R'],
         },
         {
           match_: [['@', Op.i64_extend_i32_s, Op.i64_extend_i32_u], 'y'],
@@ -491,33 +505,33 @@ const rules: Rule[] = [
           replace_: [Op.i64_and, 'y', [Op.i64_const, [Edit.i64_and, 'P', 'Q']]],
         },
         {
-          match_: [Op.i64_load8_u, 'y', 'Q'],
-          replace_: [Op.i64_load8_u, 'y', 'Q'],
+          match_: [Op.i64_load8_u, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load8_u, 'y', 'Q', 'S'],
           onlyIf_: [['P', '&', 0xFFn], '===', 0xFFn],
         },
         {
-          match_: [Op.i64_load8_s, 'y', 'Q'],
-          replace_: [Op.i64_load8_u, 'y', 'Q'],
+          match_: [Op.i64_load8_s, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load8_u, 'y', 'Q', 'S'],
           onlyIf_: ['P', '===', 0xFFn],
         },
         {
-          match_: [Op.i64_load16_u, 'y', 'Q'],
-          replace_: [Op.i64_load16_u, 'y', 'Q'],
+          match_: [Op.i64_load16_u, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load16_u, 'y', 'Q', 'S'],
           onlyIf_: [['P', '&', 0xFFFFn], '===', 0xFFFFn],
         },
         {
-          match_: [Op.i64_load16_s, 'y', 'Q'],
-          replace_: [Op.i64_load16_u, 'y', 'Q'],
+          match_: [Op.i64_load16_s, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load16_u, 'y', 'Q', 'S'],
           onlyIf_: ['P', '===', 0xFFFFn],
         },
         {
-          match_: [Op.i64_load32_u, 'y', 'Q'],
-          replace_: [Op.i64_load32_u, 'y', 'Q'],
+          match_: [Op.i64_load32_u, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load32_u, 'y', 'Q', 'S'],
           onlyIf_: [['P', '&', 0xFFFF_FFFFn], '===', 0xFFFF_FFFFn],
         },
         {
-          match_: [Op.i64_load32_s, 'y', 'Q'],
-          replace_: [Op.i64_load32_u, 'y', 'Q'],
+          match_: [Op.i64_load32_s, 'y', 'Q', 'S'],
+          replace_: [Op.i64_load32_u, 'y', 'Q', 'S'],
           onlyIf_: ['P', '===', 0xFFFF_FFFFn],
         },
       ],
@@ -712,9 +726,8 @@ export const compileOptimizations = (): (ast: Int32Array, constants: bigint[], a
 
     // Compute the value of the AST node itself
     const [op, ...operands] = replace
-    const last = operands[operands.length - 1]
-    const hasPayload = typeof last === 'string' ? last === 'P' || last === 'Q' : typeof last[0] !== 'string' && last[0] < 0
-    const shiftedChildCount = (hasPayload ? operands.length - 1 : operands.length) << Pack.ChildCountShift
+    const childCountWithoutPayloads = operands.length - +isPayload(operands[operands.length - 1]) - +isPayload(operands[operands.length - 2])
+    const shiftedChildCount = childCountWithoutPayloads << Pack.ChildCountShift
 
     // Try to reuse part of the old subtree for efficiency
     let bestScore = -1
