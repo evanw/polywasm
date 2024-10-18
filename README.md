@@ -45,6 +45,27 @@ Here are some limitations to be aware of:
 
 * **Limited API support:** This does not implement the full [WebAssembly API](https://developer.mozilla.org/en-US/docs/WebAssembly/JavaScript_interface). There's no reason it can't, but right now I have only implemented the parts of the API that I needed to be able to load and run a `.wasm` file and run the WebAssembly specification's core tests.
 
+## Compatibility
+
+The following WebAssembly proposals with a ✅ next to them have been implemented:
+
+| Feature                                                                                                      | Supported |
+|--------------------------------------------------------------------------------------------------------------|-----------|
+| [Minimum Viable Product (MVP)](https://github.com/WebAssembly/design/blob/main/MVP.md)                       | ✅        |
+| [Non-trapping float-to-int Conversions](https://github.com/WebAssembly/nontrapping-float-to-int-conversions) | ✅        |
+| [Sign-extension Operators](https://github.com/WebAssembly/sign-extension-ops)                                | ✅        |
+| [JS BigInt to Wasm i64 Integration](https://github.com/WebAssembly/JS-BigInt-integration)                    | ✅        |
+| [Bulk Memory Operations](https://github.com/WebAssembly/bulk-memory-operations)                              | ✅        |
+| [Multi-value](https://github.com/WebAssembly/multi-value)                                                    | ✅        |
+| [Reference Types](https://github.com/WebAssembly/reference-types)                                            | ✅        |
+| [Multiple Memories](https://github.com/WebAssembly/multi-memory)                                             | ✅        |
+| [Extended Constant Expressions](https://github.com/WebAssembly/extended-const)                               | ✅        |
+| [Tail Call](https://github.com/WebAssembly/tail-call)                                                        | ❌        |
+| [Fixed-width SIMD](https://github.com/WebAssembly/simd)                                                      | ❌        |
+| [Garbage Collection](https://github.com/WebAssembly/gc)                                                      | ❌        |
+
+Note that some of these features have only been implemented via the standard test suite and have not actually been observed in use by a real app. If you are using them in a real app and something isn't working correctly, feel free to submit a bug report!
+
 ## Performance
 
 These are the times to run a sample WebAssembly task using the polyfill. Each row is a result reported by [`bench/index.html`](./bench/index.html) for that browser.
