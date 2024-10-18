@@ -531,7 +531,6 @@ export const compileCode = (
   funcTypes: FuncType[],
   createLazyFunc: (index: number) => LazyFunc,
   tables: (LazyFunc | null)[][],
-  tableSection: readonly TableItem[],
   dataSegments: Uint8Array[],
   elementSegments: (readonly (LazyFunc | null)[])[],
   globals: GlobalValue[],
@@ -828,7 +827,7 @@ export const compileCode = (
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.elem_drop: return `e[${ast[ptr + 1]}]=[]`
       case Op.table_copy: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},${tableName(ast[ptr + 5])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
-      case Op.table_grow: return `l.${/* @__KEY__ */ 'table_grow_'}(${tableName(ast[ptr + 3])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${Math.min(0xFFFF_FFFF, tableSection[ast[ptr + 3]][2])})`
+      case Op.table_grow: return `l.${/* @__KEY__ */ 'table_grow_'}(${tableName(ast[ptr + 3])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])})`
       case Op.table_size: return tableName(ast[ptr + 1]) + '.length'
       case Op.table_fill: return `l.${/* @__KEY__ */ 'table_fill_'}(${tableName(ast[ptr + 4])},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
 

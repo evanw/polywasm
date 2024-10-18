@@ -1,6 +1,6 @@
 import { castToJS, castToWASM, compileCode, liveCastToWASM } from './compile'
 import { library } from './library'
-import { Desc, FuncType, GlobalValue, Module, Type, moduleMap } from './parse'
+import { Desc, FuncType, GlobalValue, Module, Type, formatHexByte, moduleMap } from './parse'
 
 export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
   declare value: WebAssembly.ValueTypeMap[T]
@@ -8,13 +8,6 @@ export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
   valueOf(): WebAssembly.ValueTypeMap[T] {
     return this.value
   }
-}
-
-export class Table {
-  declare length: number
-  declare get: (index: number) => any
-  declare grow: (delta: number, value?: any) => number
-  declare set: (index: number, value?: any) => void
 }
 
 export interface LazyFunc {
@@ -68,7 +61,7 @@ export class Instance {
     const globals: GlobalValue[] = []
     const globalTypes: Type[] = []
     const lazyFuncs: Record<number, LazyFunc> = {}
-    const tables: (LazyFunc | null)[][] = []
+    const tables: InternalTable[] = []
 
     // Returns an object with a function that lazily-compiles the underlying
     // function once and then overwrites itself regardless of where the object
@@ -98,13 +91,15 @@ export class Instance {
           return (funcs[index] = compileImportFunc(funcType, value))(...args)
         })
         funcTypes.push(funcType)
+      } else if (desc === Desc.Table) {
+        tables.push(tableRegistry.get(value as Table)!)
+      } else if (desc === Desc.Mem) {
+        memories.push(memoryRegistry.get(value as Memory)!)
       } else if (desc === Desc.Global) {
         globals.push(liveCastToWASM(value, payload))
         globalTypes.push(payload)
-      } else if (desc === Desc.Mem) {
-        memories.push(memoryRegistry.get(value as Memory)!)
       } else {
-        throw Error(`Unsupported import type ${desc} for "${module}"."${name}"`)
+        throw Error(`Unsupported import type ${formatHexByte(desc)} for "${module}"."${name}"`)
       }
     }
 
@@ -152,7 +147,6 @@ export class Instance {
           funcTypes,
           createLazyFunc,
           tables,
-          tableSection,
           dataSegments,
           elementSegments,
           globals,
@@ -166,10 +160,13 @@ export class Instance {
 
     // Handle tables
     const elementSegments: (readonly (LazyFunc | null)[])[] = []
-    for (const [type, min, max] of tableSection) {
-      const table: (LazyFunc | null)[] = []
-      for (let i = 0; i < min; i++) table.push(null)
-      tables.push(table)
+    for (const [type, initial, maximum] of tableSection) {
+      if (type !== Type.FuncRef && type !== Type.ExternRef) throw Error('Unsupported element type: ' + formatHexByte(type))
+      tables.push(tableRegistry.get(new Table({
+        element: type === Type.ExternRef ? 'externref' : 'anyfunc',
+        initial,
+        maximum: initial > maximum ? initial : maximum,
+      }))!)
     }
     for (let [tableIndex, initializer, indices] of elementSection) {
       const segment: (LazyFunc | null)[] = []
@@ -187,25 +184,7 @@ export class Instance {
       if (desc === Desc.Func) {
         exports[name] = library.exportLazyFunc_(createLazyFunc(index))!
       } else if (desc === Desc.Table) {
-        const table = tables[index]
-        const value = new Table
-        Object.defineProperty(value, 'length', {
-          get: () => table.length,
-        })
-        value.get = i => {
-          i >>>= 0
-          if (i >= table.length) throw RangeError()
-          return library.exportLazyFunc_(table[i])
-        }
-        value.set = (i, fn) => {
-          i >>>= 0
-          if (i >= table.length) throw RangeError()
-          table[i] = library.importLazyFunc_(fn)
-        }
-        value.grow = () => {
-          throw Error('Unsupported operation "grow" on table ' + index)
-        }
-        exports[name] = value
+        exports[name] = tables[index].external_
       } else if (desc === Desc.Mem) {
         exports[name] = memories[index].external_
       } else if (desc === Desc.Global) {
@@ -217,7 +196,7 @@ export class Instance {
         })
         exports[name] = value
       } else {
-        throw Error(`Unsupported export type ${desc} for "${name}"`)
+        throw Error(`Unsupported export type ${formatHexByte(desc)} for "${name}"`)
       }
     }
 
@@ -299,6 +278,49 @@ export class Memory {
       const pageCount = internal.grow_(pageDelta)
       if (pageCount < 0) throw RangeError()
       return pageCount
+    }
+  }
+}
+
+export type InternalTable = (LazyFunc | null)[] & {
+  external_: Table
+  limit_: number
+}
+
+const tableRegistry = new WeakMap<Table, InternalTable>()
+
+export class Table {
+  declare length: number
+  declare get: (index: number) => any
+  declare grow: (delta: number, value?: any) => number
+  declare set: (index: number, value?: any) => void
+
+  constructor({ element, initial, maximum }: WebAssembly.TableDescriptor) {
+    const isAnyFunc = element == 'anyfunc'
+    const internal = [] as unknown as InternalTable
+    if (!isAnyFunc && element !== 'externref') throw TypeError()
+    internal.external_ = this
+    internal.limit_ = Math.min(0xFFFF_FFFF, maximum ?? Infinity)
+    internal.length = initial
+    for (let i = 0; i < initial; i++) internal[i] = null
+    tableRegistry.set(this, internal)
+    Object.defineProperty(this, 'length', {
+      get: () => internal.length,
+    })
+    this.get = i => {
+      i >>>= 0
+      if (i >= internal.length) throw RangeError()
+      return isAnyFunc ? library.exportLazyFunc_(internal[i]) : internal[i]
+    }
+    this.set = (i, value) => {
+      i >>>= 0
+      if (i >= internal.length) throw RangeError()
+      internal[i] = isAnyFunc ? library.importLazyFunc_(value) : value
+    }
+    this.grow = (delta, value) => {
+      const oldLength = library.table_grow_(internal, isAnyFunc ? library.importLazyFunc_(value) : value, delta)
+      if (oldLength < 0) throw RangeError()
+      return oldLength
     }
   }
 }

@@ -1,5 +1,5 @@
 import { castToJS, castToWASM } from './compile'
-import { LazyFunc } from './instantiate'
+import { InternalTable, LazyFunc } from './instantiate'
 
 const buffer = new ArrayBuffer(8)
 const f32 = new Float32Array(buffer)
@@ -119,7 +119,7 @@ export const library = {
       destination.set(source.subarray(start, start + count), target)
     }
   },
-  table_init_or_copy_(x: (LazyFunc | null)[], y: (LazyFunc | null)[], d: number, s: number, n: number): void {
+  table_init_or_copy_(x: InternalTable, y: (LazyFunc | null)[], d: number, s: number, n: number): void {
     d >>>= 0
     s >>>= 0
     n >>>= 0
@@ -130,14 +130,14 @@ export const library = {
       for (let j = n - 1; j >= 0; j--) x[d + j] = y[s + j]
     }
   },
-  table_grow_(x: (LazyFunc | null)[], val: LazyFunc | null, n: number, limit: number): number {
+  table_grow_(x: InternalTable, val: LazyFunc | null, n: number): number {
     const sz = x.length
     n >>>= 0
-    if (sz + n > limit) return -1
+    if (sz + n > x.limit_) return -1
     for (let i = 0; i < n; i++) x.push(val)
     return sz
   },
-  table_fill_(x: (LazyFunc | null)[], i: number, val: LazyFunc | null, n: number): void {
+  table_fill_(x: InternalTable, i: number, val: LazyFunc | null, n: number): void {
     i >>>= 0
     n >>>= 0
     if (i + n > x.length) throw RangeError()
