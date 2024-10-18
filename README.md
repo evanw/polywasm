@@ -123,15 +123,15 @@ The AST is optimized using a declarative set of [peephole optimization](https://
 
 For example, WebAssembly bytecode that extends a 32-bit integer out to 64-bit, adds a constant, and then wraps that integer back to 32-bit can be more efficiently represented using a 32-bit add bytecode instead:
 
-```js
-// Before optimization
-i32_wrap_i64(
-  i64_add(
-    i64_extend_i32_u(X),
-    i64_const(Y)))
+```clojure
+;; Before optimization
+(i32.wrap_i64
+  (i64.add
+    (i64.extend_i32_u X)
+    (i64.const Y)))
 
-// After optimization
-i32_add(
-  X,
-  i32_const(Y))
+;; After optimization
+(i32.add
+  X
+  (i32.const Y))
 ```
