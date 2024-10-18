@@ -819,9 +819,9 @@ export const compileCode = (
       case Op.i64_trunc_sat_f64_s: return `l.${/* @__KEY__ */ 'i64_trunc_sat_s_'}(${emit(ast[ptr + 1])})`
       case Op.i64_trunc_sat_f64_u: return `l.${/* @__KEY__ */ 'i64_trunc_sat_u_'}(${emit(ast[ptr + 1])})`
 
-      case Op.memory_init: return `l.${/* @__KEY__ */ 'memory_copy_'}(d[${ast[ptr + 4]}],c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
+      case Op.memory_init: return `l.${/* @__KEY__ */ 'memory_init_or_copy_'}(d[${ast[ptr + 4]}],c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.data_drop: return `d[${ast[ptr + 1]}]=new Uint8Array`
-      case Op.memory_copy: return `l.${/* @__KEY__ */ 'memory_copy_'}(c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]},c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
+      case Op.memory_copy: return `l.${/* @__KEY__ */ 'memory_init_or_copy_'}(c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]},c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 5]},${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
       case Op.memory_fill: return `c.${/* @__KEY__ */ 'uint8Array_' + ast[ptr + 4]}.fill(${emit(ast[ptr + 1])},T=${emit(ast[ptr + 2])},T+${emit(ast[ptr + 3])})`
 
       case Op.table_init: return `l.${/* @__KEY__ */ 'table_init_or_copy_'}(${tableName(ast[ptr + 4])},e[${ast[ptr + 5]}],${emit(ast[ptr + 1])},${emit(ast[ptr + 2])},${emit(ast[ptr + 3])})`
