@@ -182,22 +182,38 @@ const parse = (bytes: Uint8Array): WASM => {
   }
 
   const readConstantU32 = (): OffsetInitializer => {
-    const op: Op = bytes[ptr++]
-    let initializer: OffsetInitializer
-    if (op === Op.i32_const) {
-      const value = readU32LEB()
-      initializer = () => value
-    }
-    else if (op === Op.global_get) {
-      const index = readU32LEB()
-      initializer = globals => {
-        if (index >= globals.length) throw RangeError()
-        return globals[index] as number
+    const stack: OffsetInitializer[] = []
+    let op: Op
+    while ((op = bytes[ptr++]) !== Op.end) {
+      if (op === Op.i32_const) {
+        const value = readU32LEB()
+        stack.push(() => value)
+      }
+      else if (op === Op.global_get) {
+        const index = readU32LEB()
+        stack.push(globals => {
+          if (index >= globals.length) throw RangeError()
+          return globals[index] as number
+        })
+      }
+      else if (op === Op.i32_add) {
+        const right = stack.pop()!, left = stack.pop()!
+        stack.push(globals => left(globals) + right(globals) | 0)
+      }
+      else if (op === Op.i32_sub) {
+        const right = stack.pop()!, left = stack.pop()!
+        stack.push(globals => left(globals) - right(globals) | 0)
+      }
+      else if (op === Op.i32_mul) {
+        const right = stack.pop()!, left = stack.pop()!
+        stack.push(globals => Math.imul(left(globals), right(globals)))
+      }
+      else {
+        throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
       }
     }
-    else throw new CompileError('Unsupported constant instruction: ' + formatHexByte(op))
-    if (bytes[ptr++] !== Op.end) throw new CompileError('Expected end after constant: ' + formatHexByte(bytes[ptr - 1]))
-    return initializer
+    if (stack.length !== 1) throw new CompileError('Unsupported constant')
+    return stack[0]
   }
 
   const readConstantFuncIndex = (): number | null => {
