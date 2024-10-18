@@ -1,5 +1,5 @@
 import { castToJS, castToWASM, compileCode, liveCastToWASM } from './compile'
-import { createLibrary, Library } from './library'
+import { library } from './library'
 import { Desc, FuncType, GlobalValue, Module, Type, moduleMap } from './parse'
 
 export class Global<T extends WebAssembly.ValueType = WebAssembly.ValueType> {
@@ -24,7 +24,7 @@ export interface LazyFunc {
   compiled_: Function // This is overwritten once when the function is first compiled
 }
 
-const compileImportFunc = (funcType: FuncType, value: WebAssembly.ImportValue, library: Library): (...args: any[]) => any => {
+const compileImportFunc = (funcType: FuncType, value: WebAssembly.ImportValue): (...args: any[]) => any => {
   const [argTypes, returnTypes] = funcType
   const argNames: string[] = []
   const argExprs: string[] = []
@@ -69,7 +69,6 @@ export class Instance {
     const globalTypes: Type[] = []
     const lazyFuncs: Record<number, LazyFunc> = {}
     const tables: (LazyFunc | null)[][] = []
-    const library = createLibrary()
 
     // Returns an object with a function that lazily-compiles the underlying
     // function once and then overwrites itself regardless of where the object
@@ -96,7 +95,7 @@ export class Instance {
         const funcType = typeSection[payload]
         const index = funcs.length
         funcs.push((...args: any[]) => {
-          return (funcs[index] = compileImportFunc(funcType, value, library))(...args)
+          return (funcs[index] = compileImportFunc(funcType, value))(...args)
         })
         funcTypes.push(funcType)
       } else if (desc === Desc.Global) {
@@ -157,7 +156,6 @@ export class Instance {
           dataSegments,
           elementSegments,
           globals,
-          library,
           context,
           wasm,
           i,

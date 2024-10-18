@@ -2,7 +2,7 @@
 // it to JavaScript. Functions are compiled lazily when they are first evaluated.
 
 import { LazyFunc } from './instantiate'
-import { Library } from './library'
+import { library } from './library'
 import { compileOptimizations } from './optimize'
 import { formatHexByte, FuncType, GlobalValue, TableItem, Type, WASM } from './parse'
 
@@ -535,7 +535,6 @@ export const compileCode = (
   dataSegments: Uint8Array[],
   elementSegments: (readonly (LazyFunc | null)[])[],
   globals: GlobalValue[],
-  library: Library,
   context: Record<string, any>,
   wasm: WASM,
   codeIndex: number,
